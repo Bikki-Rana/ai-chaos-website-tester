@@ -1,0 +1,107 @@
+﻿version: '3.9'
+
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: chaos_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chaos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chaos}
+      POSTGRES_DB: ${POSTGRES_DB:-chaosdb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chaos} -d ${POSTGRES_DB:-chaosdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: chaos_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (FastAPI) ─────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: chaos_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://chaos:chaos@postgres:5432/chaosdb
+      REDIS_URL: redis://redis:6379/0
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 8000
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+      HEADLESS: "true"
+      PAGE_TIMEOUT_MS: 30000
+      MAX_ACTIONS_PER_RUN: 200
+      MAX_CRAWL_DEPTH: 3
+      SAFE_MODE: "true"
+      AI_PROVIDER: rules
+    volumes:
+      - ./backend:/app
+      - ./screenshots:/app/screenshots
+      - ./evidence:/app/evidence
+      - ./reports:/app/reports
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Frontend (React + Vite) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chaos_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  # ── Demo Site (intentionally buggy Flask app) ─────────────────────────────
+  demo-site:
+    build:
+      context: ./demo-site
+      dockerfile: Dockerfile
+    container_name: chaos_demo_site
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

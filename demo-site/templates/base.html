@@ -1,0 +1,47 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Demo Shop{% endblock %} — Test Target</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+        .banner { background: #d32f2f; color: white; text-align: center; padding: 6px; font-size: 12px; font-weight: bold; }
+        nav { background: #1565c0; padding: 12px 24px; display: flex; align-items: center; gap: 24px; }
+        nav a { color: white; text-decoration: none; font-weight: 500; }
+        nav a:hover { text-decoration: underline; }
+        nav .cart-count { background: #ff5722; border-radius: 12px; padding: 2px 8px; font-size: 12px; }
+        .container { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+        .card { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 16px; }
+        .btn { display: inline-block; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; text-decoration: none; }
+        .btn-primary { background: #1565c0; color: white; }
+        .btn-primary:hover { background: #0d47a1; }
+        .btn-danger { background: #d32f2f; color: white; }
+        .btn-success { background: #2e7d32; color: white; }
+        .btn-secondary { background: #757575; color: white; }
+        .error { background: #ffebee; border: 1px solid #ef9a9a; color: #c62828; padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+        .success { background: #e8f5e9; border: 1px solid #a5d6a7; color: #2e7d32; padding: 12px; border-radius: 6px; margin-bottom: 16px; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 12px; }
+        label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 14px; }
+        h1 { font-size: 24px; margin-bottom: 16px; }
+        h2 { font-size: 18px; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
+        th { font-weight: 600; background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    <div class="banner">⚠️ THIS IS A TEST TARGET — INTENTIONALLY BUGGY — NOT A REAL SHOP ⚠️</div>
+    <nav>
+        <a href="/">🏠 Demo Shop</a>
+        <a href="/products">Products</a>
+        <a href="/cart">🛒 Cart <span class="cart-count" id="cart-count">{{ session.get('cart_count', 0) }}</span></a>
+        <a href="/login">Login</a>
+    </nav>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

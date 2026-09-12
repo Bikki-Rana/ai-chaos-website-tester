@@ -1,0 +1,44 @@
+﻿{% extends 'base.html' %}
+{% block title %}Cart{% endblock %}
+{% block content %}
+<h1>Shopping Cart</h1>
+{% if cart %}
+<div class="card">
+    <table>
+        <tr><th>Product</th><th>Price</th><th>Action</th></tr>
+        {% for item in cart %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>${{ item.price }}</td>
+            <td>
+                <form action="/cart/remove" method="POST" style="display:inline;">
+                    <input type="hidden" name="product_id" value="{{ item.id }}">
+                    <button type="submit" class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        <tr>
+            <td colspan="2"><strong>Total</strong></td>
+            <td><strong>${{ "%.2f"|format(total) }}</strong></td>
+        </tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Promo Code</h2>
+    <div style="display: flex; gap: 8px;">
+        <input type="text" id="promo-code" placeholder="Enter promo code" style="width: auto; flex:1;">
+        <button class="btn btn-secondary" onclick="applyPromoCode(document.getElementById('promo-code').value)">Apply Promo</button>
+    </div>
+    <p id="promo-result" style="margin-top: 8px; color: #666;"></p>
+</div>
+
+<a href="/checkout" class="btn btn-success">Proceed to Checkout →</a>
+{% else %}
+<div class="card">
+    <p>Your cart is empty.</p>
+    <a href="/products" class="btn btn-primary" style="margin-top: 12px;">Browse Products</a>
+</div>
+{% endif %}
+{% endblock %}

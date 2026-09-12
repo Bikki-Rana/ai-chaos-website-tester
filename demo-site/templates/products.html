@@ -1,0 +1,22 @@
+﻿{% extends 'base.html' %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<h1>Products</h1>
+{% for product in products %}
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2>{{ product.name }}</h2>
+            <p style="color: #666;">Stock: {{ product.stock }} &nbsp;|&nbsp; ID: {{ product.id }}</p>
+        </div>
+        <div style="text-align: right;">
+            <p style="font-size: 24px; font-weight: bold; color: #1565c0;">${{ product.price }}</p>
+            <form action="/products/add" method="POST" style="display:inline;">
+                <input type="hidden" name="product_id" value="{{ product.id }}">
+                <button type="submit" class="btn btn-primary" id="add-{{ product.id }}">Add to Cart</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

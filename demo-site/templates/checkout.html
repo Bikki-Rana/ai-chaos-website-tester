@@ -1,0 +1,41 @@
+﻿{% extends 'base.html' %}
+{% block title %}Checkout{% endblock %}
+{% block content %}
+<h1>Checkout</h1>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+    <h2>Order Summary</h2>
+    <table>
+        {% for item in cart %}
+        <tr><td>{{ item.name }}</td><td>${{ item.price }}</td></tr>
+        {% endfor %}
+        <tr><td><strong>Total</strong></td><td><strong>${{ "%.2f"|format(total) }}</strong></td></tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Payment Details</h2>
+    <!-- BUG-001: No CSRF token, no idempotency token — double submit creates duplicate orders -->
+    <form action="/checkout" method="POST" id="checkout-form">
+        <label for="name">Full Name</label>
+        <input type="text" id="name" name="name" placeholder="John Smith" required>
+
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" placeholder="john@example.com" required>
+
+        <label for="card">Card Number</label>
+        <input type="text" id="card" name="card" placeholder="4111 1111 1111 1111" maxlength="19" required>
+
+        <button type="submit" class="btn btn-success" id="pay-btn" style="width: 100%; padding: 14px; font-size: 16px;">
+            💳 Pay Now — ${{ "%.2f"|format(total) }}
+        </button>
+    </form>
+    <p style="margin-top: 8px; font-size: 12px; color: #999;">
+        Tip: Try clicking Pay Now twice quickly to trigger BUG-001.
+    </p>
+</div>
+{% endblock %}

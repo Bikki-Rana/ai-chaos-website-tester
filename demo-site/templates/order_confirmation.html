@@ -1,0 +1,33 @@
+﻿{% extends 'base.html' %}
+{% block title %}Order Confirmed{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="success">✅ Order {{ order.id }} confirmed!</div>
+    <h2>Order Details</h2>
+    <table>
+        {% for item in order.items %}
+        <tr><td>{{ item.name }}</td><td>${{ item.price }}</td></tr>
+        {% endfor %}
+        <tr><td><strong>Total</strong></td><td><strong>${{ "%.2f"|format(order.total) }}</strong></td></tr>
+    </table>
+    <p style="margin-top: 12px;">Confirmation sent to: {{ order.email }}</p>
+</div>
+
+{% if all_orders|length > 1 %}
+<div class="card" style="border: 2px solid #d32f2f;">
+    <h2 style="color: #d32f2f;">⚠️ BUG-001 Indicator</h2>
+    <p>Total orders in this session: <strong>{{ all_orders|length }}</strong></p>
+    <p style="color: #666; font-size: 13px;">If this is greater than 1, duplicate orders were created.</p>
+    <table style="margin-top: 8px;">
+        {% for o in all_orders %}
+        <tr><td>{{ o.id }}</td><td>${{ "%.2f"|format(o.total) }}</td></tr>
+        {% endfor %}
+    </table>
+</div>
+{% endif %}
+
+<a href="/products" class="btn btn-primary">Continue Shopping</a>
+<form action="/logout" method="POST" style="display: inline; margin-left: 8px;">
+    <button type="submit" class="btn btn-secondary">Logout (triggers BUG-005)</button>
+</form>
+{% endblock %}
