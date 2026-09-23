@@ -1,4 +1,4 @@
-import { Project, TestRun, PageInfo, RunStartOptions } from '../types';
+import { Project, TestRun, PageInfo, RunStartOptions, StateRecord, ActionRecord } from '../types';
 
 const API_BASE = 'http://localhost:8000/api/v1';
 
@@ -47,5 +47,13 @@ export const getRun = async (runId: string): Promise<TestRun> => {
 
 export const getRunPages = async (runId: string): Promise<PageInfo[]> => {
   const res = await fetch(`${API_BASE}/runs/${runId}/pages`);
+  return res.json();
+};
+export const getRunStates = async (runId: string): Promise<StateRecord[]> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/states`);
+  return res.json();
+};
+export const getRunActions = async (runId: string): Promise<ActionRecord[]> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/actions`);
   return res.json();
 };

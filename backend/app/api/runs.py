@@ -74,3 +74,12 @@ async def get_run_actions(run_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{run_id}/failures", response_model=List[FailureRead])
 async def get_run_failures(run_id: str, db: AsyncSession = Depends(get_db)):
     return await failure_service.get_failures_for_run(db, run_id)
+from app.schemas.state import StateRead
+from app.services import state_service
+
+@router.get("/{run_id}/states", response_model=List[StateRead])
+async def get_run_states(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await test_run_service.get_test_run(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return await state_service.get_states_by_run(db, run_id)

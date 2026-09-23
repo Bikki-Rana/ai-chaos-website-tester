@@ -30,3 +30,30 @@ export interface PageInfo {
   load_time_ms?: number;
   depth?: number;
 }
+
+export interface StateData {
+  element_count: number;
+  selectors: string[];
+  title_hint: string;
+}
+
+export interface StateRecord {
+  id: string;
+  test_run_id: string;
+  page_id?: string;
+  dom_hash: string;
+  state_data: StateData;
+  created_at: string;
+}
+
+export interface ActionRecord {
+  id: string;
+  test_run_id: string;
+  page_id?: string;
+  action_type: string;
+  target_selector?: string;
+  value?: string;
+  status: string;
+  error_message?: string;
+  created_at: string;
+}

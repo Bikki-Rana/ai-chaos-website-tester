@@ -4,8 +4,12 @@ from app.db.session import async_session_maker
 from app.models.test_run import RunStatus
 from app.models.page import Page
 from app.models.action import Action
+from app.models.state import State
 from app.models.failure import Failure
 from app.crawler.crawler_engine import crawl
+from app.state.state_manager import compute_state_signature
+from app.agent.action_generator import generate_actions
+from datetime import datetime, timezone
 from datetime import datetime, timezone
 
 logger = structlog.get_logger(__name__)
@@ -55,6 +59,9 @@ async def execute_test_run(
             if page_info.errors:
                 all_errors.extend(page_info.errors)
 
+            # Compute State Signature
+            dom_hash, state_data = compute_state_signature(page_info)
+
             # --- Persist results in one session per page ---
             async with async_session_maker() as session:
                 # Page record
@@ -71,24 +78,25 @@ async def execute_test_run(
                 session.add(page)
                 await session.flush()  # assigns page.id
 
-                # Actions: discovered buttons
-                for btn in page_info.buttons:
-                    session.add(Action(
-                        test_run_id=run_id,
-                        page_id=page.id,
-                        action_type="discovered_button",
-                        target_selector=btn.selector,
-                        value=btn.text,
-                    ))
+                # State record
+                state = State(
+                    test_run_id=run_id,
+                    page_id=page.id,
+                    dom_hash=dom_hash,
+                    state_data=state_data
+                )
+                session.add(state)
 
-                # Actions: discovered links
-                for link in page_info.links:
+                # Generate and persist actionable tasks
+                generated_actions = generate_actions(page_info)
+                for act in generated_actions:
                     session.add(Action(
                         test_run_id=run_id,
                         page_id=page.id,
-                        action_type="discovered_link",
-                        target_selector=link.selector,
-                        value=link.href,
+                        action_type=act["action_type"],
+                        target_selector=act["target_selector"],
+                        value=act["value"],
+                        status=act["status"]
                     ))
 
                 # Failures: console errors/warnings
