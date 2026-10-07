@@ -6,26 +6,31 @@ import structlog
 
 from app.core.config import settings
 from app.api import api_router
+from app.api.auth import router as auth_router
 
 logger = structlog.get_logger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Startup: create all tables if they don't exist ──────────────────────
+    # --- Startup: create all tables if they don't exist ---
     from app.db.session import engine
+    from app.db.migrate import ensure_project_owner_column
     from app.models.base import Base
     from app.models import (  # noqa: F401  ensure all mappers are loaded
-        Project, TestRun, Page, Action, State, Failure, Evidence, BugReport
+        User, Project, TestRun, Page, Action, State, Failure, Evidence, BugReport
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(ensure_project_owner_column)
     logger.info("Database tables ready")
     logger.info("Starting AI Website Chaos Tester backend",
                 mode="safe" if settings.safe_mode else "unsafe")
     yield
-    # ── Shutdown ─────────────────────────────────────────────────────────────
+    # --- Shutdown ---
     await engine.dispose()
     logger.info("Shutting down backend")
+
 
 app = FastAPI(
     title="AI Website Chaos Tester",
@@ -34,15 +39,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Auth uses a bearer token in the Authorization header (no cookies).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type", "*"],
 )
 
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(api_router, prefix="/api/v1")
+
 
 @app.get("/health")
 async def health_check():

@@ -1,216 +1,543 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { TestRun, PageInfo, StateRecord, ActionRecord } from '../types';
-import { getRun, getRunPages, getRunStates, getRunActions, getNextAction, getRunFailures, getFailureScript } from '../services/api';
+﻿import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import Button, { CopyButton } from '../components/Button';
+import FailureRow from '../components/FailureRow';
+import { ChevronDownIcon, ChevronRightIcon, RefreshIcon } from '../components/Icons';
+import Metric from '../components/Metric';
+import { Banner, EmptyState, ErrorState, ShowMore, SkeletonRows } from '../components/States';
+import StatusBadge from '../components/StatusBadge';
+import {
+  fetchActions,
+  fetchFailures,
+  fetchPages,
+  fetchProject,
+  fetchRun,
+  fetchStates,
+} from '../lib/client';
+import {
+  formatDateTime,
+  formatDuration,
+  formatTime,
+  parseTs,
+  runDurationMs,
+  shortId,
+} from '../lib/format';
+import { useAsync, useNow } from '../lib/hooks';
+import type { AsyncState } from '../lib/hooks';
+import { paths } from '../lib/routes';
+import type { StateRecord, TestRun } from '../types';
+
+type Tab = 'failures' | 'actions' | 'pages' | 'states';
+
+const ROW_LIMIT = 200;
+const SEV_RANK: Record<string, number> = {
+  critical: 0,
+  fatal: 0,
+  high: 1,
+  error: 1,
+  medium: 2,
+  warning: 2,
+  warn: 2,
+  low: 3,
+};
+const sevRank = (s: string) => SEV_RANK[s.toLowerCase()] ?? 4;
+
+function failuresEmpty(status: TestRun['status']): string {
+  switch (status) {
+    case 'COMPLETED':
+      return 'The run finished without recording any failures.';
+    case 'FAILED':
+      return 'The run failed before recording any failures. See the run error above.';
+    case 'STOPPED':
+      return 'No failures were recorded before the run was stopped.';
+    default:
+      return 'No failures recorded so far. This list refreshes while the run is in progress.';
+  }
+}
+
+function Section<T>({
+  q,
+  items,
+  what,
+  empty,
+  children,
+}: {
+  q: AsyncState<unknown>;
+  items: T[];
+  what: string;
+  empty: ReactNode;
+  children: (items: T[]) => ReactNode;
+}) {
+  if (q.error && !q.data) {
+    return (
+      <div className="ct-panel-body">
+        <ErrorState what={what} message={q.error} onRetry={() => q.reload()} />
+      </div>
+    );
+  }
+  if (!q.data) return <SkeletonRows />;
+  if (items.length === 0) return <>{empty}</>;
+  return <>{children(items)}</>;
+}
+
+function StateRow({ state, index }: { state: StateRecord; index: number }) {
+  const [open, setOpen] = useState(false);
+  const selectors = state.state_data?.selectors ?? [];
+  return (
+    <>
+      <tr>
+        <td className="ct-cell-main">
+          <button
+            type="button"
+            className="ct-linkbtn"
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
+            State {index}
+          </button>
+        </td>
+        <td data-label="DOM hash">
+          <span className="ct-mono" title={state.dom_hash}>
+            {state.dom_hash.slice(0, 12)}
+          </span>
+        </td>
+        <td data-label="Elements" className="ct-num">
+          {state.state_data?.element_count ?? '\u2014'}
+        </td>
+        <td data-label="Selectors" className="ct-num">
+          {selectors.length}
+        </td>
+        <td data-label="Title hint">{state.state_data?.title_hint || '\u2014'}</td>
+      </tr>
+      {open ? (
+        <tr className="ct-subrow">
+          <td colSpan={5}>
+            <div className="ct-expand">
+              <div className="ct-kv">
+                <span className="ct-faint">Full hash</span>
+                <span className="ct-mono ct-wrap">{state.dom_hash}</span>
+                <CopyButton text={state.dom_hash} />
+              </div>
+              <div className="ct-section-label">Selectors ({selectors.length})</div>
+              {selectors.length > 0 ? (
+                <pre className="ct-pre">
+                  {selectors.slice(0, 100).join('\n')}
+                  {selectors.length > 100 ? `\n\u2026 ${selectors.length - 100} more` : ''}
+                </pre>
+              ) : (
+                <div className="ct-faint ct-small">None recorded.</div>
+              )}
+            </div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
 
 export default function RunDetailPage() {
-  const { id } = useParams<{id: string}>();
-  const [run, setRun] = useState<TestRun | null>(null);
-  const [pages, setPages] = useState<PageInfo[]>([]);
-  const [states, setStates] = useState<StateRecord[]>([]);
-  const [actions, setActions] = useState<ActionRecord[]>([]);
-  const [nextAction, setNextAction] = useState<ActionRecord | null>(null);
-  const [failures, setFailures] = useState<any[]>([]);
+  const { runId = '' } = useParams<{ runId: string }>();
 
-  const loadData = async () => {
-    if (!id) return;
-    const r = await getRun(id);
-    setRun(r);
-    
-    if (r.status === 'COMPLETED' || r.status === 'FAILED') {
-      setPages(await getRunPages(id));
-      setStates(await getRunStates(id));
-      setActions(await getRunActions(id));
-      setNextAction(await getNextAction(id));
-      setFailures(await getRunFailures(id));
-    } else if (r.status === 'RUNNING') {
-      setTimeout(loadData, 3000); // poll
+  const run = useAsync(() => fetchRun(runId), [runId]);
+  const pages = useAsync(() => fetchPages(runId), [runId]);
+  const states = useAsync(() => fetchStates(runId), [runId]);
+  const actions = useAsync(() => fetchActions(runId), [runId]);
+  const failures = useAsync(() => fetchFailures(runId), [runId]);
+
+  const projectId = run.data?.project_id;
+  const project = useAsync(async () => (projectId ? fetchProject(projectId) : undefined), [projectId]);
+
+  const status = run.data?.status;
+  const active = status === 'RUNNING' || status === 'PENDING';
+  const now = useNow(status === 'RUNNING');
+
+  const reloadRun = run.reload;
+  const reloadPages = pages.reload;
+  const reloadStates = states.reload;
+  const reloadActions = actions.reload;
+  const reloadFailures = failures.reload;
+  const reloadAll = useCallback(
+    (silent = false) => {
+      reloadRun(silent);
+      reloadPages(silent);
+      reloadStates(silent);
+      reloadActions(silent);
+      reloadFailures(silent);
+    },
+    [reloadRun, reloadPages, reloadStates, reloadActions, reloadFailures],
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    const t = window.setInterval(() => reloadAll(true), 3000);
+    return () => window.clearInterval(t);
+  }, [active, reloadAll]);
+
+  // One final refresh when a run leaves RUNNING/PENDING.
+  const wasActive = useRef(false);
+  useEffect(() => {
+    if (wasActive.current && !active) reloadAll(true);
+    wasActive.current = active;
+  }, [active, reloadAll]);
+
+  const [tabState, setTab] = useState<Tab | null>(null);
+  const [actionLimit, setActionLimit] = useState(ROW_LIMIT);
+  const [stateLimit, setStateLimit] = useState(ROW_LIMIT);
+
+  const pagesById = useMemo(
+    () => new Map((pages.data ?? []).map((p) => [p.id, p] as const)),
+    [pages.data],
+  );
+  const actionsByPage = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of actions.data ?? []) {
+      if (a.page_id) m.set(a.page_id, (m.get(a.page_id) ?? 0) + 1);
     }
-  };
+    return m;
+  }, [actions.data]);
+  const actionsSorted = useMemo(
+    () => [...(actions.data ?? [])].sort((a, b) => parseTs(a.created_at) - parseTs(b.created_at)),
+    [actions.data],
+  );
+  const statesSorted = useMemo(
+    () => [...(states.data ?? [])].sort((a, b) => parseTs(a.created_at) - parseTs(b.created_at)),
+    [states.data],
+  );
+  const failuresSorted = useMemo(
+    () =>
+      [...(failures.data ?? [])].sort(
+        (a, b) => sevRank(a.severity) - sevRank(b.severity) || parseTs(b.created_at) - parseTs(a.created_at),
+      ),
+    [failures.data],
+  );
 
-  useEffect(() => { loadData(); }, [id]);
+  const r = run.data;
 
-  const handleDownloadScript = async (failureId: string) => {
-    try {
-        const scriptText = await getFailureScript(failureId);
-        const blob = new Blob([scriptText], { type: 'text/x-python' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `reproduce_${failureId.substring(0, 8)}.py`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    } catch (e) {
-        alert('Failed to download script');
-    }
-  };
+  if (!r) {
+    return (
+      <div className="ct-page">
+        <nav className="ct-crumbs">
+          <Link to={paths.projects}>Projects</Link>
+        </nav>
+        {run.error ? (
+          <ErrorState what="run" message={run.error} onRetry={() => run.reload()} />
+        ) : (
+          <section className="ct-panel" aria-busy="true">
+            <SkeletonRows rows={6} />
+          </section>
+        )}
+      </div>
+    );
+  }
 
-  if (!run) return <div>Loading...</div>;
+  const projectName = project.data?.name ?? shortId(r.project_id);
+  const tab: Tab = tabState ?? (failuresSorted.length > 0 ? 'failures' : 'actions');
+  const failureCount = failures.data?.length;
+  const count = (n: number | undefined) => (n === undefined ? '\u2014' : n);
+
+  const TABS: { id: Tab; label: string; n: number | undefined }[] = [
+    { id: 'failures', label: 'Failures', n: failureCount },
+    { id: 'actions', label: 'Actions', n: actions.data?.length },
+    { id: 'pages', label: 'Pages', n: pages.data?.length },
+    { id: 'states', label: 'DOM states', n: states.data?.length },
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto p-4">
-      <div className="mb-4">
-        <Link to={`/projects/${run.project_id}`} className="text-blue-600 hover:underline">← Back to Project</Link>
+    <div className="ct-page">
+      <nav className="ct-crumbs" aria-label="Breadcrumb">
+        <Link to={paths.projects}>Projects</Link>
+        <span aria-hidden="true">/</span>
+        <Link to={paths.project(r.project_id)}>{projectName}</Link>
+        <span aria-hidden="true">/</span>
+        <span className="ct-mono">Run {shortId(r.id)}</span>
+      </nav>
+
+      <header className="ct-pagehead">
+        <div className="ct-head-main">
+          <div className="ct-titlerow">
+            <h1 className="ct-title">
+              Run <span className="ct-mono">{shortId(r.id)}</span>
+            </h1>
+            <StatusBadge status={r.status} />
+          </div>
+          <div className="ct-meta">
+            <span>
+              <b>Run ID</b>
+              <span className="ct-mono ct-wrap">{r.id}</span>
+              <CopyButton text={r.id} />
+            </span>
+            <span>
+              <b>Project</b>
+              <Link className="ct-link" to={paths.project(r.project_id)}>
+                {projectName}
+              </Link>
+            </span>
+            <span>
+              <b>Started</b>
+              {r.started_at ? formatDateTime(r.started_at) : 'Not started'}
+            </span>
+            <span>
+              <b>Duration</b>
+              <span className="ct-mono">{formatDuration(runDurationMs(r, now))}</span>
+            </span>
+          </div>
+        </div>
+        <Button icon={<RefreshIcon />} onClick={() => reloadAll()} loading={run.loading}>
+          Refresh
+        </Button>
+      </header>
+
+      {r.status === 'RUNNING' ? (
+        <Banner tone="info" icon={<span className="ct-badge ct-tone-info"><span className="ct-dot ct-dot-live" /></span>}>
+          Run in progress. Data refreshes every 3 seconds.
+        </Banner>
+      ) : null}
+      {r.status === 'PENDING' ? (
+        <Banner tone="info" icon={<span className="ct-badge ct-tone-neutral"><span className="ct-dot" /></span>}>
+          Run is queued and has not started yet.
+        </Banner>
+      ) : null}
+      {r.status === 'FAILED' ? (
+        <Banner tone="bad">
+          <strong>Run failed</strong>
+          <div className="ct-mono ct-wrap ct-muted">{r.error_message ?? 'No error message was recorded.'}</div>
+        </Banner>
+      ) : null}
+      {r.status === 'STOPPED' ? (
+        <Banner tone="warn">
+          This run was stopped before it finished. The data below reflects what was captured up to that point.
+        </Banner>
+      ) : null}
+      {run.error ? (
+        <ErrorState what="latest run status" message={run.error} onRetry={() => run.reload()} />
+      ) : null}
+
+      <div className="ct-metrics" style={{ ['--cols' as string]: 5 }}>
+        <Metric label="Pages visited" value={count(pages.data?.length)} />
+        <Metric label="DOM states" value={count(states.data?.length)} />
+        <Metric label="Actions" value={count(actions.data?.length)} />
+        <Metric label="Failures" value={count(failureCount)} bad={(failureCount ?? 0) > 0} />
+        <Metric
+          label="Duration"
+          value={formatDuration(runDurationMs(r, now))}
+          hint={r.status === 'RUNNING' ? 'Elapsed' : undefined}
+        />
       </div>
 
-      <div className="bg-white p-6 rounded shadow mb-6 flex justify-between items-center border-l-4 border-blue-500">
-        <div>
-          <h1 className="text-2xl font-bold mb-2">Test Run Details</h1>
-          <p className="text-gray-700">Run ID: {run.id}</p>
-          <p className="text-gray-700">Started: {run.started_at ? new Date(run.started_at).toLocaleString() : 'N/A'}</p>
+      <section className="ct-panel" aria-label="Run data">
+        <div className="ct-tabs" role="tablist">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              className="ct-tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+              <span className={`ct-tab-count${t.id === 'failures' && (t.n ?? 0) > 0 ? ' is-bad' : ''}`}>
+                {t.n ?? '\u2014'}
+              </span>
+            </button>
+          ))}
         </div>
-        <div className="text-right">
-          <span className={`px-4 py-2 inline-flex text-lg leading-5 font-bold rounded-full 
-            ${run.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 
-              run.status === 'FAILED' ? 'bg-red-100 text-red-800' : 
-              run.status === 'RUNNING' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
-            {run.status}
-          </span>
-          <p className="mt-2 text-gray-600">{run.duration_ms ? `${(run.duration_ms / 1000).toFixed(1)}s elapsed` : ''}</p>
-        </div>
-      </div>
 
-      {run.error_message && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
-          <h3 className="text-red-800 font-bold">Error</h3>
-          <p className="text-red-700 whitespace-pre-wrap">{run.error_message}</p>
-        </div>
-      )}
-      
-      {nextAction && (
-        <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 mb-6 shadow-sm rounded-r">
-          <h3 className="text-indigo-900 font-bold text-lg flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            Next Planned Action
-          </h3>
-          <p className="text-indigo-800 mt-1">
-            The Action Selector has prioritized the following action from the pending queue:
-          </p>
-          <div className="mt-3 bg-white p-3 rounded border border-indigo-100 flex gap-4">
-            <div><span className="font-semibold text-gray-500 text-xs uppercase tracking-wider block">Type</span><span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm">{nextAction.action_type}</span></div>
-            <div className="flex-1 overflow-hidden"><span className="font-semibold text-gray-500 text-xs uppercase tracking-wider block">Target Selector</span><span className="font-mono text-sm truncate block" title={nextAction.target_selector}>{nextAction.target_selector}</span></div>
-            {nextAction.value && <div className="flex-1 overflow-hidden"><span className="font-semibold text-gray-500 text-xs uppercase tracking-wider block">Value</span><span className="font-mono text-sm truncate block" title={nextAction.value}>{nextAction.value}</span></div>}
-          </div>
-        </div>
-      )}
-
-      {pages.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold mb-4">Discovered Pages ({pages.length})</h2>
-          <div className="bg-white rounded shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Depth</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Load Time</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {pages.map(page => (
-                  <tr key={page.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600"><a href={page.url} target="_blank" rel="noreferrer">{page.url}</a></td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{page.depth}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{page.title}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{page.load_time_ms ? `${page.load_time_ms.toFixed(0)}ms` : '-'}</td>
-                  </tr>
+        {tab === 'failures' ? (
+          <Section
+            q={failures}
+            items={failuresSorted}
+            what="failures"
+            empty={<EmptyState title="No failures detected" description={failuresEmpty(r.status)} />}
+          >
+            {(items) => (
+              <div>
+                {items.map((f) => (
+                  <FailureRow
+                    key={f.id}
+                    failure={f}
+                    pageUrl={f.page_id ? pagesById.get(f.page_id)?.url : undefined}
+                  />
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {states.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold mb-4">Unique States Discovered ({new Set(states.map(s => s.dom_hash)).size})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {states.map(state => (
-              <div key={state.id} className="bg-white p-4 rounded shadow border">
-                <h3 className="font-semibold mb-2">State Hash: <span className="font-mono text-xs text-gray-500">{state.dom_hash.substring(0, 12)}...</span></h3>
-                <p className="text-sm text-gray-700"><strong>Title Hint:</strong> {state.state_data.title_hint}</p>
-                <p className="text-sm text-gray-700"><strong>Elements:</strong> {state.state_data.element_count}</p>
-                <details className="mt-2 text-sm text-gray-500 cursor-pointer">
-                  <summary>View Selectors</summary>
-                  <ul className="mt-1 pl-4 list-disc max-h-32 overflow-y-auto">
-                    {state.state_data.selectors.map((s, i) => <li key={i}>{s}</li>)}
-                  </ul>
-                </details>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {failures.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold mb-4 text-red-600">Detected Failures ({failures.length})</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {failures.map((f: any) => (
-              <div key={f.id} className="bg-red-50 p-4 rounded shadow border border-red-200">
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-red-800">{f.failure_type}</h3>
-                  <span className="px-2 py-1 bg-red-200 text-red-800 text-xs rounded font-bold uppercase">{f.severity}</span>
-                </div>
-                <p className="text-sm text-red-700 font-mono mb-3 bg-red-100 p-2 rounded">{f.message}</p>
-                <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleDownloadScript(f.id)}
-                      className="text-xs bg-white border border-red-300 text-red-700 px-3 py-1 rounded hover:bg-red-50"
-                    >
-                      Download Repro Script
-                    </button>
-                    <Link to={`/failures/${f.id}`} className="text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 inline-block text-center flex-1">
-                      View Details
-                    </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {actions.length > 0 && (
-        <div className="mb-8">
-          <h2 className="text-xl font-bold mb-4">Generated Actions ({actions.length})</h2>
-          <div className="bg-white rounded shadow overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Target</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {actions.slice(0, 100).map(action => (
-                  <tr key={action.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{action.action_type}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500 truncate max-w-xs" title={action.target_selector}>{action.target_selector}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500 truncate max-w-xs" title={action.value}>{action.value || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${action.status === 'success' ? 'bg-green-100 text-green-800' : 
-                          action.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
-                        {action.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {actions.length > 100 && (
-              <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 border-t">
-                Showing 100 of {actions.length} generated actions.
               </div>
             )}
-          </div>
-        </div>
-      )}
+          </Section>
+        ) : null}
+
+        {tab === 'actions' ? (
+          <Section
+            q={actions}
+            items={actionsSorted}
+            what="actions"
+            empty={
+              <EmptyState
+                title="No actions recorded"
+                description={
+                  active
+                    ? 'Actions will appear here as the run performs them.'
+                    : 'This run did not record any actions.'
+                }
+              />
+            }
+          >
+            {(items) => (
+              <>
+                <div className="ct-tablewrap">
+                  <table className="ct-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Target</th>
+                        <th>Value</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.slice(0, actionLimit).map((a) => (
+                        <Fragment key={a.id}>
+                          <tr className={a.error_message ? 'ct-has-sub' : undefined}>
+                            <td data-label="Time" className="ct-mono" title={formatDateTime(a.created_at)}>
+                              {formatTime(a.created_at)}
+                            </td>
+                            <td data-label="Action" className="ct-mono">
+                              {a.action_type}
+                            </td>
+                            <td data-label="Target">
+                              {a.target_selector ? (
+                                <span className="ct-mono ct-wrap">{a.target_selector}</span>
+                              ) : (
+                                <span className="ct-faint">{'\u2014'}</span>
+                              )}
+                            </td>
+                            <td data-label="Value">
+                              {a.value ? (
+                                <span className="ct-mono ct-wrap">{a.value}</span>
+                              ) : (
+                                <span className="ct-faint">{'\u2014'}</span>
+                              )}
+                            </td>
+                            <td data-label="Status">
+                              <StatusBadge status={a.status} />
+                            </td>
+                          </tr>
+                          {a.error_message ? (
+                            <tr className="ct-subrow">
+                              <td colSpan={5}>
+                                <span className="ct-mono ct-wrap ct-bad-text">{a.error_message}</span>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <ShowMore
+                  shown={Math.min(actionLimit, items.length)}
+                  total={items.length}
+                  onMore={() => setActionLimit(items.length)}
+                />
+              </>
+            )}
+          </Section>
+        ) : null}
+
+        {tab === 'pages' ? (
+          <Section
+            q={pages}
+            items={pages.data ?? []}
+            what="pages"
+            empty={
+              <EmptyState
+                title="No pages visited"
+                description={active ? 'Pages will appear here as they are crawled.' : 'This run did not visit any pages.'}
+              />
+            }
+          >
+            {(items) => (
+              <div className="ct-tablewrap">
+                <table className="ct-table">
+                  <thead>
+                    <tr>
+                      <th>URL</th>
+                      <th>Title</th>
+                      <th className="ct-num">Depth</th>
+                      <th className="ct-num">Load time</th>
+                      <th className="ct-num">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((p) => (
+                      <tr key={p.id}>
+                        <td className="ct-cell-main">
+                          <span className="ct-mono ct-wrap">{p.url}</span>
+                        </td>
+                        <td data-label="Title">{p.title || <span className="ct-faint">{'\u2014'}</span>}</td>
+                        <td data-label="Depth" className="ct-num">
+                          {p.depth ?? '\u2014'}
+                        </td>
+                        <td data-label="Load time" className="ct-num ct-mono">
+                          {formatDuration(p.load_time_ms)}
+                        </td>
+                        <td data-label="Actions" className="ct-num">
+                          {actionsByPage.get(p.id) ?? 0}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+        ) : null}
+
+        {tab === 'states' ? (
+          <Section
+            q={states}
+            items={statesSorted}
+            what="DOM states"
+            empty={
+              <EmptyState
+                title="No DOM states captured"
+                description={
+                  active ? 'States will appear here as they are captured.' : 'This run did not capture any DOM states.'
+                }
+              />
+            }
+          >
+            {(items) => (
+              <>
+                <div className="ct-tablewrap">
+                  <table className="ct-table">
+                    <thead>
+                      <tr>
+                        <th>State</th>
+                        <th>DOM hash</th>
+                        <th className="ct-num">Elements</th>
+                        <th className="ct-num">Selectors</th>
+                        <th>Title hint</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.slice(0, stateLimit).map((s, i) => (
+                        <StateRow key={s.id} state={s} index={i + 1} />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <ShowMore
+                  shown={Math.min(stateLimit, items.length)}
+                  total={items.length}
+                  onMore={() => setStateLimit(items.length)}
+                />
+              </>
+            )}
+          </Section>
+        ) : null}
+      </section>
     </div>
   );
 }

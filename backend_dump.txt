@@ -1,0 +1,936 @@
+﻿
+===== backend\app\main.py =====
+
+"""AI Website Chaos Tester -- FastAPI application entry point."""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import structlog
+
+from app.core.config import settings
+from app.api import api_router
+
+logger = structlog.get_logger(__name__)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # â”€â”€ Startup: create all tables if they don't exist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    from app.db.session import engine
+    from app.models.base import Base
+    from app.models import (  # noqa: F401  ensure all mappers are loaded
+        Project, TestRun, Page, Action, State, Failure, Evidence, BugReport
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables ready")
+    logger.info("Starting AI Website Chaos Tester backend",
+                mode="safe" if settings.safe_mode else "unsafe")
+    yield
+    # â”€â”€ Shutdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    await engine.dispose()
+    logger.info("Shutting down backend")
+
+app = FastAPI(
+    title="AI Website Chaos Tester",
+    description="Autonomous web application chaos testing framework",
+    version="0.2.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api/v1")
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "ai-chaos-tester",
+        "version": "0.2.0",
+        "safe_mode": settings.safe_mode,
+    }
+
+===== backend\app\core\config.py =====
+
+"""Application configuration loaded from environment variables."""
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    """All configuration is sourced from environment variables or .env file."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        populate_by_name=True,
+        extra="ignore",
+    )
+
+    # Application
+    app_name: str = "AI Website Chaos Tester"
+    app_version: str = "0.1.0"
+    debug: bool = Field(default=False, alias="DEBUG")
+    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
+    # Server
+    backend_host: str = Field(default="0.0.0.0", alias="BACKEND_HOST")
+    backend_port: int = Field(default=8000, alias="BACKEND_PORT")
+
+    # Database
+    database_url: str = Field(
+        default="postgresql://chaos:chaos@localhost:5432/chaosdb",
+        alias="DATABASE_URL",
+    )
+
+    # Redis
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        alias="REDIS_URL",
+    )
+
+    # Browser Automation
+    headless: bool = Field(default=True, alias="HEADLESS")
+    page_timeout_ms: int = Field(default=30000, alias="PAGE_TIMEOUT_MS")
+    max_actions_per_run: int = Field(default=200, alias="MAX_ACTIONS_PER_RUN")
+    max_crawl_depth: int = Field(default=3, alias="MAX_CRAWL_DEPTH")
+
+    # Safety
+    allowed_domains: str = Field(default="", alias="ALLOWED_DOMAINS")
+    safe_mode: bool = Field(default=True, alias="SAFE_MODE")
+
+    # AI Provider
+    ai_provider: str = Field(default="rules", alias="AI_PROVIDER")
+
+
+# Singleton settings instance
+settings = Settings()
+
+===== backend\app\db\session.py =====
+
+"""Database session and engine management."""
+import os
+from pathlib import Path
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import NullPool
+from app.core.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Resolve database URL
+db_url = settings.database_url
+
+# Upgrade postgresql:// -> postgresql+asyncpg://
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+elif db_url.startswith("postgresql+psycopg://"):
+    db_url = db_url.replace("postgresql+psycopg://", "postgresql+asyncpg://")
+
+# On Windows local dev (no live Postgres), fall back to SQLite beside session.py
+_is_local = "localhost" in db_url or "127.0.0.1" in db_url
+if _is_local and not db_url.startswith("sqlite"):
+    # Absolute path so it is stable regardless of the CWD uvicorn is launched from
+    _db_dir = Path(__file__).resolve().parent   # backend/app/db/
+    _db_path = (_db_dir / "chaosdb.db").as_posix()
+    db_url = f"sqlite+aiosqlite:///{_db_path}"
+    logger.info(f"Windows local dev: using SQLite at {_db_path}")
+
+_is_sqlite = "sqlite" in db_url
+
+engine = create_async_engine(
+    db_url,
+    echo=False,
+    poolclass=NullPool if _is_sqlite else None,
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
+)
+
+async_session_maker = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
+)
+
+async def get_db() -> AsyncSession:
+    """FastAPI dependency: yields an async DB session."""
+    async with async_session_maker() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+===== backend\app\models\base.py =====
+
+"""SQLAlchemy 2.0 declarative base shared by all ORM models."""
+from datetime import datetime, timezone
+from sqlalchemy import DateTime
+from sqlalchemy.orm import DeclarativeBase, mapped_column, MappedColumn
+from typing import Annotated
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# Reusable column types
+TimestampPK = Annotated[
+    datetime,
+    mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False),
+]
+
+
+class Base(DeclarativeBase):
+    """Shared declarative base. All models inherit from this."""
+    pass
+
+===== backend\app\models\__init__.py =====
+
+"""Database ORM models."""
+from app.models.base import Base
+from app.models.project import Project
+from app.models.test_run import TestRun, RunStatus
+from app.models.page import Page
+from app.models.action import Action
+from app.models.state import State
+from app.models.failure import Failure
+from app.models.evidence import Evidence
+from app.models.bug_report import BugReport
+
+__all__ = [
+    "Base",
+    "Project",
+    "TestRun",
+    "RunStatus",
+    "Page",
+    "Action",
+    "State",
+    "Failure",
+    "Evidence",
+    "BugReport",
+]
+
+===== backend\app\models\project.py =====
+
+"""Project ORM model."""
+import uuid
+from datetime import datetime, timezone
+from typing import List, Optional
+from sqlalchemy import String, Text, DateTime, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.base import Base
+
+
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    testing_objective: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    # Relationships
+    test_runs: Mapped[List["TestRun"]] = relationship("TestRun", back_populates="project", cascade="all, delete-orphan")
+    pages: Mapped[List["Page"]] = relationship("Page", back_populates="project", cascade="all, delete-orphan")
+
+===== backend\app\models\test_run.py =====
+
+"""TestRun ORM model."""
+import uuid
+import enum
+from datetime import datetime, timezone
+from typing import List, Optional
+from sqlalchemy import String, Enum, DateTime, ForeignKey, func, Float, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.models.base import Base
+
+class RunStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    STOPPED = "STOPPED"
+
+class TestRun(Base):
+    __tablename__ = "test_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[RunStatus] = mapped_column(Enum(RunStatus), default=RunStatus.PENDING, nullable=False)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Relationships
+    project: Mapped["Project"] = relationship("Project", back_populates="test_runs")
+    pages: Mapped[List["Page"]] = relationship("Page", back_populates="test_run", cascade="all, delete-orphan")
+    actions: Mapped[List["Action"]] = relationship("Action", back_populates="test_run", cascade="all, delete-orphan")
+    failures: Mapped[List["Failure"]] = relationship("Failure", back_populates="test_run", cascade="all, delete-orphan")
+
+===== backend\app\schemas\project.py =====
+
+"""Project schemas."""
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from typing import Optional
+from datetime import datetime
+
+class ProjectBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    url: HttpUrl
+    description: Optional[str] = None
+    testing_objective: Optional[str] = None
+
+class ProjectCreate(ProjectBase):
+    pass
+
+class ProjectRead(ProjectBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+===== backend\app\api\projects.py =====
+
+"""Projects API router."""
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.project import ProjectCreate, ProjectRead
+from app.schemas.test_run import TestRunCreate, TestRunRead
+from app.services import project_service, test_run_service
+
+router = APIRouter(prefix="/projects", tags=["projects"])
+
+@router.post("/", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
+async def create_project(project: ProjectCreate, db: AsyncSession = Depends(get_db)):
+    return await project_service.create_project(db, project)
+
+@router.get("/", response_model=List[ProjectRead])
+async def list_projects(db: AsyncSession = Depends(get_db)):
+    return await project_service.get_projects(db)
+
+@router.get("/{project_id}", response_model=ProjectRead)
+async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    project = await project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+    success = await project_service.delete_project(db, project_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+@router.post("/{project_id}/runs", response_model=TestRunRead, status_code=status.HTTP_201_CREATED)
+async def create_run(project_id: str, db: AsyncSession = Depends(get_db)):
+    run = await test_run_service.create_test_run(db, project_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return run
+
+@router.get("/{project_id}/runs", response_model=List[TestRunRead])
+async def list_runs(project_id: str, db: AsyncSession = Depends(get_db)):
+    project = await project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await test_run_service.get_test_runs(db, project_id)
+
+===== backend\app\api\runs.py =====
+
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List, Optional
+
+from app.db.session import get_db
+from app.schemas.test_run import TestRunRead, RunStartOptions
+from app.schemas.page import PageRead
+from app.schemas.action import ActionRead
+from app.schemas.failure import FailureRead
+from app.schemas.state import StateRead
+from app.models.test_run import RunStatus
+from app.services import test_run_service, page_service, action_service, failure_service, project_service, state_service, action_selector_service
+from app.browser.run_executor import execute_test_run
+
+router = APIRouter(prefix="/runs", tags=["runs"])
+
+@router.get("/{run_id}", response_model=TestRunRead)
+async def get_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await test_run_service.get_test_run(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
+
+@router.post("/{run_id}/start", response_model=TestRunRead)
+async def start_run(
+    run_id: str, 
+    background_tasks: BackgroundTasks, 
+    options: RunStartOptions,
+    db: AsyncSession = Depends(get_db)
+):
+    run = await test_run_service.get_test_run(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status != RunStatus.PENDING:
+        raise HTTPException(status_code=400, detail=f"Cannot start run in state {run.status}")
+    
+    project = await project_service.get_project(db, run.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Mark as running immediately
+    run = await test_run_service.update_run_status(db, run_id, RunStatus.RUNNING)
+    
+    # Kick off actual execution task (no project_id param)
+    background_tasks.add_task(
+        execute_test_run,
+        run_id=run.id,
+        url=project.url,
+        headless=True,
+        max_pages=options.max_pages,
+        max_depth=options.max_depth
+    )
+    
+    return run
+
+@router.post("/{run_id}/stop", response_model=TestRunRead)
+async def stop_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await test_run_service.get_test_run(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status != RunStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Can only stop a RUNNING run")
+        
+    return await test_run_service.update_run_status(db, run_id, RunStatus.STOPPED)
+
+@router.get("/{run_id}/pages", response_model=List[PageRead])
+async def get_run_pages(run_id: str, db: AsyncSession = Depends(get_db)):
+    return await page_service.get_pages_for_run(db, run_id)
+
+@router.get("/{run_id}/actions", response_model=List[ActionRead])
+async def get_run_actions(run_id: str, db: AsyncSession = Depends(get_db)):
+    return await action_service.get_actions_for_run(db, run_id)
+
+@router.get("/{run_id}/failures", response_model=List[FailureRead])
+async def get_run_failures(run_id: str, db: AsyncSession = Depends(get_db)):
+    return await failure_service.get_failures_for_run(db, run_id)
+
+@router.get("/{run_id}/states", response_model=List[StateRead])
+async def get_run_states(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await test_run_service.get_test_run(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return await state_service.get_states_by_run(db, run_id)
+
+@router.get("/{run_id}/actions/next", response_model=Optional[ActionRead])
+async def get_next_action(run_id: str, db: AsyncSession = Depends(get_db)):
+    run = await test_run_service.get_test_run(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    action = await action_selector_service.get_next_action_for_run(db, run_id)
+    return action
+
+===== backend\app\api\failures.py =====
+
+"""Failures API router."""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+
+from app.db.session import get_db
+from app.schemas.failure import FailureRead
+from app.schemas.evidence import EvidenceRead
+from app.services import failure_service, evidence_service
+
+router = APIRouter(prefix="/failures", tags=["failures"])
+
+@router.get("/{failure_id}", response_model=FailureRead)
+async def get_failure(failure_id: str, db: AsyncSession = Depends(get_db)):
+    failure = await failure_service.get_failure_with_evidence(db, failure_id)
+    if not failure:
+        raise HTTPException(status_code=404, detail="Failure not found")
+    return failure
+
+@router.get("/{failure_id}/evidence", response_model=List[EvidenceRead])
+async def get_failure_evidence(failure_id: str, db: AsyncSession = Depends(get_db)):
+    # Verify failure exists
+    failure = await failure_service.get_failure_with_evidence(db, failure_id)
+    if not failure:
+        raise HTTPException(status_code=404, detail="Failure not found")
+    return await evidence_service.get_evidence_for_failure(db, failure_id)
+
+from fastapi.responses import PlainTextResponse
+from app.services.reproducer_service import generate_reproduction_script
+
+@router.get("/{failure_id}/reproduction-script", response_class=PlainTextResponse)
+async def get_reproduction_script(failure_id: str, db: AsyncSession = Depends(get_db)):
+    # Verify failure exists
+    failure = await failure_service.get_failure_with_evidence(db, failure_id)
+    if not failure:
+        raise HTTPException(status_code=404, detail="Failure not found")
+        
+    script_content = await generate_reproduction_script(db, failure_id)
+    if not script_content:
+        raise HTTPException(status_code=400, detail="Could not generate script")
+        
+    return script_content
+
+===== backend\app\services\project_service.py =====
+
+"""Project service."""
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.project import Project
+from app.schemas.project import ProjectCreate
+from typing import List, Optional
+
+async def create_project(session: AsyncSession, project_in: ProjectCreate) -> Project:
+    project = Project(
+        name=project_in.name,
+        url=str(project_in.url),
+        description=project_in.description,
+        testing_objective=project_in.testing_objective
+    )
+    session.add(project)
+    await session.commit()
+    await session.refresh(project)
+    return project
+
+async def get_projects(session: AsyncSession) -> List[Project]:
+    result = await session.execute(select(Project).order_by(Project.created_at.desc()))
+    return list(result.scalars().all())
+
+async def get_project(session: AsyncSession, project_id: str) -> Optional[Project]:
+    return await session.get(Project, project_id)
+
+async def delete_project(session: AsyncSession, project_id: str) -> bool:
+    project = await session.get(Project, project_id)
+    if not project:
+        return False
+    await session.delete(project)
+    await session.commit()
+    return True
+
+===== backend\app\services\test_run_service.py =====
+
+"""TestRun service."""
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models.test_run import TestRun, RunStatus
+from app.models.project import Project
+from typing import List, Optional
+from datetime import datetime, timezone
+
+async def create_test_run(session: AsyncSession, project_id: str) -> Optional[TestRun]:
+    # Ensure project exists
+    project = await session.get(Project, project_id)
+    if not project:
+        return None
+        
+    run = TestRun(
+        project_id=project_id,
+        status=RunStatus.PENDING
+    )
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+    return run
+
+async def get_test_runs(session: AsyncSession, project_id: str) -> List[TestRun]:
+    result = await session.execute(
+        select(TestRun).where(TestRun.project_id == project_id).order_by(TestRun.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+async def get_test_run(session: AsyncSession, run_id: str) -> Optional[TestRun]:
+    return await session.get(TestRun, run_id)
+
+async def update_run_status(
+    session: AsyncSession, 
+    run_id: str, 
+    status: RunStatus, 
+    error_message: str = None
+) -> Optional[TestRun]:
+    run = await session.get(TestRun, run_id)
+    if not run:
+        return None
+        
+    run.status = status
+    if status == RunStatus.RUNNING:
+        run.started_at = datetime.now(timezone.utc)
+    elif status in (RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.STOPPED):
+        run.finished_at = datetime.now(timezone.utc)
+        if run.started_at:
+            delta = run.finished_at - run.started_at
+            run.duration_ms = delta.total_seconds() * 1000
+    
+    if error_message:
+        run.error_message = error_message
+        
+    await session.commit()
+    await session.refresh(run)
+    return run
+
+===== backend\app\services\failure_service.py =====
+
+"""Failure service."""
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.models.failure import Failure
+from typing import List, Optional
+
+async def get_failures_for_run(session: AsyncSession, run_id: str) -> List[Failure]:
+    result = await session.execute(
+        select(Failure).where(Failure.test_run_id == run_id).order_by(Failure.created_at)
+    )
+    return list(result.scalars().all())
+
+async def get_failure_with_evidence(session: AsyncSession, failure_id: str) -> Optional[Failure]:
+    result = await session.execute(
+        select(Failure).options(selectinload(Failure.evidence)).where(Failure.id == failure_id)
+    )
+    return result.scalar_one_or_none()
+
+===== backend\alembic\env.py =====
+
+import asyncio
+from logging.config import fileConfig
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
+from alembic import context
+import sys
+import os
+
+# Add backend directory to sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.core.config import settings
+from app.models.base import Base
+from app.models import *  # Import all models so metadata knows about them
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# Setup database URL
+db_url = settings.database_url
+if db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+elif db_url.startswith("postgresql+psycopg://"):
+    db_url = db_url.replace("postgresql+psycopg://", "postgresql+asyncpg://")
+    
+if "localhost" in db_url or "127.0.0.1" in db_url:
+    db_url = "sqlite+aiosqlite:///./chaosdb.db"
+    
+config.set_main_option("sqlalchemy.url", db_url)
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode."""
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+def do_run_migrations(connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True)
+    with context.begin_transaction():
+        context.run_migrations()
+
+async def run_async_migrations() -> None:
+    """In this scenario we need to create an Engine
+    and associate a connection with the context.
+    """
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode."""
+    asyncio.run(run_async_migrations())
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+===== backend\alembic.ini =====
+
+# A generic, single database configuration.
+
+[alembic]
+# path to migration scripts.
+# this is typically a path given in POSIX (e.g. forward slashes)
+# format, relative to the token %(here)s which refers to the location of this
+# ini file
+script_location = %(here)s/alembic
+
+# template used to generate migration file names; The default value is %%(rev)s_%%(slug)s
+# Uncomment the line below if you want the files to be prepended with date and time
+# see https://alembic.sqlalchemy.org/en/latest/tutorial.html#editing-the-ini-file
+# for all available tokens
+# file_template = %%(year)d_%%(month).2d_%%(day).2d_%%(hour).2d%%(minute).2d-%%(rev)s_%%(slug)s
+# Or organize into date-based subdirectories (requires recursive_version_locations = true)
+# file_template = %%(year)d/%%(month).2d/%%(day).2d_%%(hour).2d%%(minute).2d_%%(second).2d_%%(rev)s_%%(slug)s
+
+# sys.path path, will be prepended to sys.path if present.
+# defaults to the current working directory.  for multiple paths, the path separator
+# is defined by "path_separator" below.
+prepend_sys_path = .
+
+# timezone to use when rendering the date within the migration file
+# as well as the filename.
+# If specified, requires the tzdata library which can be installed by adding
+# `alembic[tz]` to the pip requirements.
+# string value is passed to ZoneInfo()
+# leave blank for localtime
+# timezone =
+
+# max length of characters to apply to the "slug" field
+# truncate_slug_length = 40
+
+# set to 'true' to run the environment during
+# the 'revision' command, regardless of autogenerate
+# revision_environment = false
+
+# set to 'true' to allow .pyc and .pyo files without
+# a source .py file to be detected as revisions in the
+# versions/ directory
+# sourceless = false
+
+# version location specification; This defaults
+# to <script_location>/versions.  When using multiple version
+# directories, initial revisions must be specified with --version-path.
+# The path separator used here should be the separator specified by "path_separator"
+# below.
+# version_locations = %(here)s/bar:%(here)s/bat:%(here)s/alembic/versions
+
+# path_separator; This indicates what character is used to split lists of file
+# paths, including version_locations and prepend_sys_path within configparser
+# files such as alembic.ini.
+# The default rendered in new alembic.ini files is "os", which uses os.pathsep
+# to provide os-dependent path splitting.
+#
+# Note that in order to support legacy alembic.ini files, this default does NOT
+# take place if path_separator is not present in alembic.ini.  If this
+# option is omitted entirely, fallback logic is as follows:
+#
+# 1. Parsing of the version_locations option falls back to using the legacy
+#    "version_path_separator" key, which if absent then falls back to the legacy
+#    behavior of splitting on spaces and/or commas.
+# 2. Parsing of the prepend_sys_path option falls back to the legacy
+#    behavior of splitting on spaces, commas, or colons.
+#
+# Valid values for path_separator are:
+#
+# path_separator = :
+# path_separator = ;
+# path_separator = space
+# path_separator = newline
+#
+# Use os.pathsep. Default configuration used for new projects.
+path_separator = os
+
+
+# set to 'true' to search source files recursively
+# in each "version_locations" directory
+# new in Alembic version 1.10
+# recursive_version_locations = false
+
+# the output encoding used when revision files
+# are written from script.py.mako
+# output_encoding = utf-8
+
+# database URL.  This is consumed by the user-maintained env.py script only.
+# other means of configuring database URLs may be customized within the env.py
+# file.
+sqlalchemy.url = driver://user:pass@localhost/dbname
+
+
+[post_write_hooks]
+# post_write_hooks defines scripts or Python functions that are run
+# on newly generated revision scripts.  See the documentation for further
+# detail and examples
+
+# format using "black" - use the console_scripts runner, against the "black" entrypoint
+# hooks = black
+# black.type = console_scripts
+# black.entrypoint = black
+# black.options = -l 79 REVISION_SCRIPT_FILENAME
+
+# lint with attempts to fix using "ruff" - use the module runner, against the "ruff" module
+# hooks = ruff
+# ruff.type = module
+# ruff.module = ruff
+# ruff.options = check --fix REVISION_SCRIPT_FILENAME
+
+# Alternatively, use the exec runner to execute a binary found on your PATH
+# hooks = ruff
+# ruff.type = exec
+# ruff.executable = ruff
+# ruff.options = check --fix REVISION_SCRIPT_FILENAME
+
+# Logging configuration.  This is also consumed by the user-maintained
+# env.py script only.
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARNING
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARNING
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S
+
+===== frontend\src\services\api.ts =====
+
+import { Project, TestRun, PageInfo, RunStartOptions, StateRecord, ActionRecord } from '../types';
+
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL}/api/v1`;
+
+export const getProjects = async (): Promise<Project[]> => {
+  const res = await fetch(`${API_BASE}/projects/`);
+  return res.json();
+};
+
+export const createProject = async (data: {name: string, url: string}): Promise<Project> => {
+  const res = await fetch(`${API_BASE}/projects/`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data)
+  });
+  return res.json();
+};
+
+export const getProject = async (id: string): Promise<Project> => {
+  const res = await fetch(`${API_BASE}/projects/${id}`);
+  return res.json();
+};
+
+export const getProjectRuns = async (projectId: string): Promise<TestRun[]> => {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/runs`);
+  return res.json();
+};
+
+export const createRun = async (projectId: string): Promise<TestRun> => {
+  const res = await fetch(`${API_BASE}/projects/${projectId}/runs`, { method: 'POST' });
+  return res.json();
+};
+
+export const startRun = async (runId: string, options: RunStartOptions): Promise<TestRun> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/start`, { 
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(options)
+  });
+  return res.json();
+};
+
+export const getRun = async (runId: string): Promise<TestRun> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}`);
+  return res.json();
+};
+
+export const getRunPages = async (runId: string): Promise<PageInfo[]> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/pages`);
+  return res.json();
+};
+export const getRunStates = async (runId: string): Promise<StateRecord[]> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/states`);
+  return res.json();
+};
+export const getRunActions = async (runId: string): Promise<ActionRecord[]> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/actions`);
+  return res.json();
+};
+export const getNextAction = async (runId: string): Promise<ActionRecord | null> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/actions/next`);
+  if (res.status === 204 || res.headers.get("content-length") === "0") return null;
+  const data = await res.json();
+  return data || null;
+};export const getRunFailures = async (runId: string) => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/failures`);
+  return res.json();
+};
+export const getFailureEvidence = async (failureId: string) => {
+  const res = await fetch(`${API_BASE}/failures/${failureId}/evidence`);
+  return res.json();
+};
+export const getFailureScript = async (failureId: string): Promise<string> => {
+  const res = await fetch(`${API_BASE}/failures/${failureId}/reproduction-script`);
+  if (!res.ok) throw new Error('Could not generate script');
+  return res.text();
+};
+
+===== frontend\src\main.tsx =====
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)

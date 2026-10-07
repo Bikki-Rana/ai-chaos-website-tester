@@ -1,5 +1,6 @@
 """Database ORM models."""
 from app.models.base import Base
+from app.models.user import User
 from app.models.project import Project
 from app.models.test_run import TestRun, RunStatus
 from app.models.page import Page
@@ -11,6 +12,7 @@ from app.models.bug_report import BugReport
 
 __all__ = [
     "Base",
+    "User",
     "Project",
     "TestRun",
     "RunStatus",

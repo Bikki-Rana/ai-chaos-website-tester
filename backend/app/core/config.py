@@ -1,4 +1,4 @@
-﻿"""Application configuration loaded from environment variables."""
+"""Application configuration loaded from environment variables."""
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
@@ -48,6 +48,10 @@ class Settings(BaseSettings):
 
     # AI Provider
     ai_provider: str = Field(default="rules", alias="AI_PROVIDER")
+
+    # Auth: secret used to sign login tokens. If empty, a random secret is
+    # generated once and stored in backend/app/db/.auth_secret.
+    secret_key: str = Field(default="", alias="SECRET_KEY")
 
 
 # Singleton settings instance
