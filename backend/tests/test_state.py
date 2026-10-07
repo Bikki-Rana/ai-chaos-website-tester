@@ -3,11 +3,13 @@ from app.browser.models import PageInfo, ElementInfo
 
 def test_compute_state_signature_determinism():
     p1 = PageInfo(
+        run_id="test",
+        final_url="http://localhost",
         url="http://localhost",
         title="Test",
         buttons=[
-            ElementInfo(selector="button#a", text="A"),
-            ElementInfo(selector="button#b", text="B")
+            ElementInfo(tag="button", selector="button#a", text="A"),
+            ElementInfo(tag="button", selector="button#b", text="B")
         ],
         links=[],
         inputs=[],
@@ -17,11 +19,13 @@ def test_compute_state_signature_determinism():
     )
     
     p2 = PageInfo(
+        run_id="test",
+        final_url="http://localhost",
         url="http://localhost",
         title="Test",
         buttons=[
-            ElementInfo(selector="button#b", text="B"),
-            ElementInfo(selector="button#a", text="A")
+            ElementInfo(tag="button", selector="button#b", text="B"),
+            ElementInfo(tag="button", selector="button#a", text="A")
         ],
         links=[],
         inputs=[],

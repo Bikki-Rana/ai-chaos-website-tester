@@ -57,3 +57,9 @@ export const getRunActions = async (runId: string): Promise<ActionRecord[]> => {
   const res = await fetch(`${API_BASE}/runs/${runId}/actions`);
   return res.json();
 };
+export const getNextAction = async (runId: string): Promise<ActionRecord | null> => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/actions/next`);
+  if (res.status === 204 || res.headers.get("content-length") === "0") return null;
+  const data = await res.json();
+  return data || null;
+};

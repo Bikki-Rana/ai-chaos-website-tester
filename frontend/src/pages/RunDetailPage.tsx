@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { TestRun, PageInfo, StateRecord, ActionRecord } from '../types';
-import { getRun, getRunPages, getRunStates, getRunActions } from '../services/api';
+import { getRun, getRunPages, getRunStates, getRunActions, getNextAction } from '../services/api';
 
 export default function RunDetailPage() {
   const { id } = useParams<{id: string}>();
@@ -9,6 +9,7 @@ export default function RunDetailPage() {
   const [pages, setPages] = useState<PageInfo[]>([]);
   const [states, setStates] = useState<StateRecord[]>([]);
   const [actions, setActions] = useState<ActionRecord[]>([]);
+  const [nextAction, setNextAction] = useState<ActionRecord | null>(null);
 
   const loadData = async () => {
     if (!id) return;
@@ -19,6 +20,7 @@ export default function RunDetailPage() {
       setPages(await getRunPages(id));
       setStates(await getRunStates(id));
       setActions(await getRunActions(id));
+      setNextAction(await getNextAction(id));
     } else if (r.status === 'RUNNING') {
       setTimeout(loadData, 3000); // poll
     }
@@ -34,7 +36,7 @@ export default function RunDetailPage() {
         <Link to={`/projects/${run.project_id}`} className="text-blue-600 hover:underline">← Back to Project</Link>
       </div>
 
-      <div className="bg-white p-6 rounded shadow mb-6 flex justify-between items-center">
+      <div className="bg-white p-6 rounded shadow mb-6 flex justify-between items-center border-l-4 border-blue-500">
         <div>
           <h1 className="text-2xl font-bold mb-2">Test Run Details</h1>
           <p className="text-gray-700">Run ID: {run.id}</p>
@@ -55,6 +57,23 @@ export default function RunDetailPage() {
         <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
           <h3 className="text-red-800 font-bold">Error</h3>
           <p className="text-red-700 whitespace-pre-wrap">{run.error_message}</p>
+        </div>
+      )}
+      
+      {nextAction && (
+        <div className="bg-indigo-50 border-l-4 border-indigo-500 p-4 mb-6 shadow-sm rounded-r">
+          <h3 className="text-indigo-900 font-bold text-lg flex items-center">
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            Next Planned Action
+          </h3>
+          <p className="text-indigo-800 mt-1">
+            The Action Selector has prioritized the following action from the pending queue:
+          </p>
+          <div className="mt-3 bg-white p-3 rounded border border-indigo-100 flex gap-4">
+            <div><span className="font-semibold text-gray-500 text-xs uppercase tracking-wider block">Type</span><span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm">{nextAction.action_type}</span></div>
+            <div className="flex-1 overflow-hidden"><span className="font-semibold text-gray-500 text-xs uppercase tracking-wider block">Target Selector</span><span className="font-mono text-sm truncate block" title={nextAction.target_selector}>{nextAction.target_selector}</span></div>
+            {nextAction.value && <div className="flex-1 overflow-hidden"><span className="font-semibold text-gray-500 text-xs uppercase tracking-wider block">Value</span><span className="font-mono text-sm truncate block" title={nextAction.value}>{nextAction.value}</span></div>}
+          </div>
         </div>
       )}
 

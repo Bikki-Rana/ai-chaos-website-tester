@@ -40,8 +40,8 @@ def generate_actions(page_info: PageInfo) -> List[Dict[str, Any]]:
         if not inp.selector:
             continue
             
-        input_type = (inp.attributes.get("type", "") if inp.attributes else "").lower()
-        input_name = (inp.attributes.get("name", "") if inp.attributes else "").lower()
+        input_type = (inp.element_type or "").lower()
+        input_name = (inp.name or "").lower()
         
         # Heuristics based on type and name
         fill_value = "chaos_test_123"

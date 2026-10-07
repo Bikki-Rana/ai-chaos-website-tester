@@ -3,14 +3,16 @@ from app.browser.models import PageInfo, ElementInfo
 
 def test_generate_actions():
     page_info = PageInfo(
+        run_id="test",
         url="http://localhost",
+        final_url="http://localhost",
         title="Test",
         buttons=[ElementInfo(tag="button", selector="button#submit", text="Submit")],
         links=[ElementInfo(tag="a", selector="a#nav", href="http://localhost/nav")],
         inputs=[
-            ElementInfo(tag="input", selector="input#email", attributes={"type": "email"}),
-            ElementInfo(tag="input", selector="input#pass", attributes={"type": "password"}),
-            ElementInfo(tag="input", selector="input#other", attributes={"type": "text"})
+            ElementInfo(tag="input", selector="input#email", element_type="email"),
+            ElementInfo(tag="input", selector="input#pass", element_type="password"),
+            ElementInfo(tag="input", selector="input#other", element_type="text")
         ],
         forms=[],
         console_messages=[],
