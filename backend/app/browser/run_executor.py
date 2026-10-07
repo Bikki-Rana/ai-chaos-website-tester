@@ -10,9 +10,12 @@ from app.models.test_run import TestRun
 from app.models.page import Page
 from app.models.state import State
 from app.models.action import Action
+from app.models.failure import Failure
+from app.models.evidence import Evidence
 from app.state.state_manager import compute_state_signature
 from app.agent.action_generator import generate_actions
 from app.agent.action_selector import select_next_action
+from app.agent.failure_detector import detect_failures
 from app.agent.agent_engine import run_agent_loop
 
 logger = structlog.get_logger(__name__)
@@ -117,6 +120,34 @@ async def execute_test_run(
                         update(Action).where(Action.id == last_action_id).values(status="success")
                     )
 
+                # Detect + save failures
+                failures_data = detect_failures(page_info)
+                for f_data in failures_data:
+                    db_failure = Failure(
+                        test_run_id=run_id,
+                        page_id=page_id,
+                        failure_type=f_data["failure_type"],
+                        message=f_data["message"],
+                        stack_trace=f_data["stack_trace"],
+                        severity=f_data["severity"]
+                    )
+                    db.add(db_failure)
+                    await db.flush()
+
+                    if page_info.screenshot_path:
+                        db.add(Evidence(
+                            failure_id=db_failure.id,
+                            evidence_type="screenshot",
+                            file_path=page_info.screenshot_path
+                        ))
+                    if getattr(page_info, "action_log_path", None):
+                        db.add(Evidence(
+                            failure_id=db_failure.id,
+                            evidence_type="action_log",
+                            file_path=page_info.action_log_path
+                        ))
+                await db.flush()
+
                 # Generate + save pending actions
                 saved_actions = await _generate_and_save_actions(db, run_id, page_id, page_info)
 
@@ -169,7 +200,11 @@ async def execute_test_run(
             run.status = "COMPLETED"
             run.completed_at = datetime.now(timezone.utc)
             if run.started_at:
-                run.duration_ms = int((run.completed_at - run.started_at).total_seconds() * 1000)
+                started = run.started_at
+                if started.tzinfo is None:
+                    from datetime import timezone as tz
+                    started = started.replace(tzinfo=tz.utc)
+                run.duration_ms = int((run.completed_at - started).total_seconds() * 1000)
             await db.commit()
 
     logger.info("test_run_finished", run_id=run_id, status="COMPLETED")

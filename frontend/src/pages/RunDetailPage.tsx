@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { TestRun, PageInfo, StateRecord, ActionRecord } from '../types';
-import { getRun, getRunPages, getRunStates, getRunActions, getNextAction } from '../services/api';
+import { getRun, getRunPages, getRunStates, getRunActions, getNextAction, getRunFailures, getFailureScript } from '../services/api';
 
 export default function RunDetailPage() {
   const { id } = useParams<{id: string}>();
@@ -10,6 +10,7 @@ export default function RunDetailPage() {
   const [states, setStates] = useState<StateRecord[]>([]);
   const [actions, setActions] = useState<ActionRecord[]>([]);
   const [nextAction, setNextAction] = useState<ActionRecord | null>(null);
+  const [failures, setFailures] = useState<any[]>([]);
 
   const loadData = async () => {
     if (!id) return;
@@ -21,12 +22,30 @@ export default function RunDetailPage() {
       setStates(await getRunStates(id));
       setActions(await getRunActions(id));
       setNextAction(await getNextAction(id));
+      setFailures(await getRunFailures(id));
     } else if (r.status === 'RUNNING') {
       setTimeout(loadData, 3000); // poll
     }
   };
 
   useEffect(() => { loadData(); }, [id]);
+
+  const handleDownloadScript = async (failureId: string) => {
+    try {
+        const scriptText = await getFailureScript(failureId);
+        const blob = new Blob([scriptText], { type: 'text/x-python' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reproduce_${failureId.substring(0, 8)}.py`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        alert('Failed to download script');
+    }
+  };
 
   if (!run) return <div>Loading...</div>;
 
@@ -120,6 +139,34 @@ export default function RunDetailPage() {
                     {state.state_data.selectors.map((s, i) => <li key={i}>{s}</li>)}
                   </ul>
                 </details>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {failures.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold mb-4 text-red-600">Detected Failures ({failures.length})</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {failures.map((f: any) => (
+              <div key={f.id} className="bg-red-50 p-4 rounded shadow border border-red-200">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-red-800">{f.failure_type}</h3>
+                  <span className="px-2 py-1 bg-red-200 text-red-800 text-xs rounded font-bold uppercase">{f.severity}</span>
+                </div>
+                <p className="text-sm text-red-700 font-mono mb-3 bg-red-100 p-2 rounded">{f.message}</p>
+                <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleDownloadScript(f.id)}
+                      className="text-xs bg-white border border-red-300 text-red-700 px-3 py-1 rounded hover:bg-red-50"
+                    >
+                      Download Repro Script
+                    </button>
+                    <Link to={`/failures/${f.id}`} className="text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700 inline-block text-center flex-1">
+                      View Details
+                    </Link>
+                </div>
               </div>
             ))}
           </div>

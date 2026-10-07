@@ -8,8 +8,8 @@ class PageRead(BaseModel):
     project_id: str
     test_run_id: str
     url: str
-    final_url: str
-    title: str
+    final_url: Optional[str] = None
+    title: Optional[str] = None
     load_time_ms: Optional[float]
     screenshot_path: Optional[str]
     depth: int

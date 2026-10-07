@@ -57,3 +57,22 @@ export interface ActionRecord {
   error_message?: string;
   created_at: string;
 }
+
+export interface FailureRecord {
+  id: string;
+  test_run_id: string;
+  page_id?: string;
+  failure_type: string;
+  message: string;
+  stack_trace?: string;
+  severity: string;
+  created_at: string;
+}
+
+export interface EvidenceRecord {
+  id: string;
+  failure_id: string;
+  evidence_type: string;
+  file_path: string;
+  created_at: string;
+}

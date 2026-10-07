@@ -62,4 +62,16 @@ export const getNextAction = async (runId: string): Promise<ActionRecord | null>
   if (res.status === 204 || res.headers.get("content-length") === "0") return null;
   const data = await res.json();
   return data || null;
+};export const getRunFailures = async (runId: string) => {
+  const res = await fetch(`${API_BASE}/runs/${runId}/failures`);
+  return res.json();
+};
+export const getFailureEvidence = async (failureId: string) => {
+  const res = await fetch(`${API_BASE}/failures/${failureId}/evidence`);
+  return res.json();
+};
+export const getFailureScript = async (failureId: string): Promise<string> => {
+  const res = await fetch(`${API_BASE}/failures/${failureId}/reproduction-script`);
+  if (!res.ok) throw new Error('Could not generate script');
+  return res.text();
 };

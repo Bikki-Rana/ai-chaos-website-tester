@@ -2,7 +2,7 @@
 
 **Autonomous AI-Driven Web Application Chaos Testing and Failure Discovery Framework**
 
-> **Phase 2 Complete**: Project management, persistent test runs, REST API, browser-to-DB integration, React frontend, SQLite local dev, PostgreSQL in Docker.
+> **Phase 9 Complete**: Failure Detector & Evidence Collector integrated. Automonous agents flag JS Errors/Network 500s and automatically capture screenshots and DOM states as evidence.
 
 ---
 
@@ -58,13 +58,13 @@ ai-chaos-tester/
 | 0     | Project Initialization         | DONE      |
 | 1     | Browser Automation Prototype   | DONE      |
 | 2     | Project & Run Management + API | DONE      |
-| 3     | Web Crawler                    | planned   |
-| 4     | State Management               | planned   |
-| 5-6   | Action Generation / Selection  | planned   |
-| 7     | Chaos Generator                | planned   |
-| 8     | Failure Detector               | planned   |
-| 9     | Evidence Collector             | planned   |
-| 10    | Failure Reproduction           | planned   |
+| 3     | Web Crawler                    | DONE      |
+| 4     | State Management               | DONE      |
+| 5-6   | Action Generation / Selection  | DONE      |
+| 7     | Chaos Generator                | DONE      |
+| 8     | Failure Detector               | DONE      |
+| 9     | Evidence Collector             | DONE      |
+| 10    | Failure Reproduction           | DONE      |
 | 11    | Failure Classification         | planned   |
 | 12    | Bug Report Generator           | planned   |
 | 13    | Full Dashboard                 | planned   |
