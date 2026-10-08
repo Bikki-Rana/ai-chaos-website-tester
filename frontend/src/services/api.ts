@@ -128,6 +128,15 @@ export const getRunFailures = (runId: string): Promise<unknown> => json<unknown>
 
 export const getFailureEvidence = (failureId: string): Promise<unknown> =>
   json<unknown>(`/failures/${failureId}/evidence`);
+export const getFailureScreenshot = async (
+  failureId: string,
+  evidenceId: string,
+): Promise<Blob> => {
+  const res = await send(
+    `/failures/${failureId}/evidence/${evidenceId}/content`,
+  );
+  return res.blob();
+};
 
 export const getFailureScript = async (failureId: string): Promise<string> => {
   const res = await send(`/failures/${failureId}/reproduction-script`);

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+
+import { useEffect, useState } from 'react';
 import type { FailureRecord } from '../types';
 import Button, { CopyButton } from './Button';
 import { ChevronDownIcon, ChevronRightIcon, DownloadIcon } from './Icons';
 import { SeverityBadge, severityTone } from './StatusBadge';
 import { errMsg, useAsync } from '../lib/hooks';
-import { fetchEvidence, fetchScript } from '../lib/client';
+import { fetchEvidence, fetchScreenshot, fetchScript } from '../lib/client';
 import { formatDateTime, formatTime, shortId } from '../lib/format';
 
 function guessExt(script: string): string {
@@ -18,6 +19,15 @@ function FailureDetails({ failure }: { failure: FailureRecord }) {
   const [script, setScript] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
+  const [screenshotBusy, setScreenshotBusy] = useState<string | null>(null);
+  const [screenshotError, setScreenshotError] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (screenshotUrl) URL.revokeObjectURL(screenshotUrl);
+    };
+  }, [screenshotUrl]);
 
   async function generate() {
     setBusy(true);
@@ -28,6 +38,22 @@ function FailureDetails({ failure }: { failure: FailureRecord }) {
       setError(errMsg(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function viewScreenshot(evidenceId: string) {
+    setScreenshotBusy(evidenceId);
+    setScreenshotError(null);
+    try {
+      const blob = await fetchScreenshot(failure.id, evidenceId);
+      if (!blob.type.startsWith('image/')) {
+        throw new Error('The server did not return an image.');
+      }
+      setScreenshotUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      setScreenshotError(errMsg(e));
+    } finally {
+      setScreenshotBusy(null);
     }
   }
 
@@ -78,6 +104,16 @@ function FailureDetails({ failure }: { failure: FailureRecord }) {
               <span className="ct-faint">{ev.evidence_type}</span>
               <span className="ct-mono ct-wrap">{ev.file_path}</span>
               <CopyButton text={ev.file_path} label="Copy path" />
+              {ev.evidence_type === 'screenshot' ? (
+                <button
+                  type="button"
+                  className="ct-linkbtn"
+                  disabled={screenshotBusy !== null}
+                  onClick={() => viewScreenshot(ev.id)}
+                >
+                  {screenshotBusy === ev.id ? 'Loading screenshot…' : 'View screenshot'}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -85,15 +121,44 @@ function FailureDetails({ failure }: { failure: FailureRecord }) {
         <div className="ct-faint ct-small">No evidence attached to this failure.</div>
       )}
 
+      {screenshotError ? (
+        <div className="ct-field-error">{screenshotError}</div>
+      ) : null}
+
+      {screenshotUrl ? (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+            <div className="ct-section-label">Screenshot preview</div>
+            <button
+              type="button"
+              className="ct-linkbtn"
+              onClick={() => setScreenshotUrl(null)}
+            >
+              Close screenshot
+            </button>
+          </div>
+          <img
+            src={screenshotUrl}
+            alt={`Screenshot for failure ${shortId(failure.id)}`}
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              maxHeight: '75vh',
+              objectFit: 'contain',
+              borderRadius: 8,
+              border: '1px solid var(--border, #ddd)',
+            }}
+          />
+        </div>
+      ) : null}
+
       <div className="ct-actions-row">
         <Button variant="primary" onClick={generate} loading={busy}>
           Generate reproduction script
         </Button>
         {script !== null ? (
           <>
-            <Button onClick={download} icon={<DownloadIcon />}>
-              Download
-            </Button>
+            <Button onClick={download} icon={<DownloadIcon />}>Download</Button>
             <CopyButton text={script} label="Copy script" />
           </>
         ) : null}
@@ -108,7 +173,13 @@ function FailureDetails({ failure }: { failure: FailureRecord }) {
   );
 }
 
-export default function FailureRow({ failure, pageUrl }: { failure: FailureRecord; pageUrl?: string }) {
+export default function FailureRow({
+  failure,
+  pageUrl,
+}: {
+  failure: FailureRecord;
+  pageUrl?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="ct-failure" data-tone={severityTone(failure.severity)}>
@@ -121,10 +192,14 @@ export default function FailureRow({ failure, pageUrl }: { failure: FailureRecor
         <SeverityBadge severity={failure.severity} />
         <div style={{ minWidth: 0 }}>
           <div className="ct-mono ct-faint ct-wrap">{failure.failure_type}</div>
-          <div className={`ct-failure-msg${open ? '' : ' ct-clamp'}`}>{failure.message}</div>
+          <div className={`ct-failure-msg${open ? '' : ' ct-clamp'}`}>
+            {failure.message}
+          </div>
           <div className="ct-failure-meta">
             {pageUrl ? <span className="ct-mono ct-wrap">{pageUrl}</span> : null}
-            <span title={formatDateTime(failure.created_at)}>{formatTime(failure.created_at)}</span>
+            <span title={formatDateTime(failure.created_at)}>
+              {formatTime(failure.created_at)}
+            </span>
           </div>
         </div>
         {open ? <ChevronDownIcon /> : <ChevronRightIcon />}
