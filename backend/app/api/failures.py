@@ -1,3 +1,4 @@
+
 """Failures API router."""
 
 from pathlib import Path
@@ -41,7 +42,7 @@ async def get_screenshot_content(
     failure: Failure = Depends(get_owned_failure),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a screenshot belonging to an authorized failure."""
+    """Serve a screenshot attached to an authorized failure."""
 
     result = await db.execute(
         select(Evidence).where(
@@ -54,31 +55,48 @@ async def get_screenshot_content(
     if evidence is None or evidence.evidence_type != "screenshot":
         raise HTTPException(status_code=404, detail="Screenshot not found")
 
-    image_path = Path(evidence.file_path).resolve()
-
-    # Allow only page.png files inside the expected screenshots directory.
     project_root = Path(__file__).resolve().parents[3]
-    allowed_roots = {
-        (project_root / "screenshots").resolve(),
-        Path("/screenshots").resolve(),
-    }
+    screenshots_root = (project_root / "screenshots").resolve()
 
-    if image_path.name != "page.png":
-        raise HTTPException(status_code=404, detail="Screenshot not found")
+    # Support both relative paths and absolute paths recorded by the extractor.
+    stored_path = Path(evidence.file_path)
+    candidates = []
 
-    if not any(image_path.is_relative_to(root) for root in allowed_roots):
-        raise HTTPException(status_code=404, detail="Screenshot not found")
+    if stored_path.is_absolute():
+        candidates.append(stored_path.resolve())
+    else:
+        candidates.append((project_root / stored_path).resolve())
 
-    if not image_path.is_file():
+        # Some records use paths prefixed with "screenshots/".
+        if stored_path.parts and stored_path.parts[0] == "screenshots":
+            candidates.append(
+                (project_root.joinpath(*stored_path.parts)).resolve()
+            )
+
+    image_path = next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.is_relative_to(screenshots_root)
+            and candidate.is_file()
+            and candidate.suffix.lower() == ".png"
+        ),
+        None,
+    )
+
+    if image_path is None:
         raise HTTPException(
             status_code=404,
-            detail="Screenshot file not found. It may have been removed during a redeployment.",
+            detail=(
+                "Screenshot file not found on the backend. "
+                "It may have been removed during a redeployment."
+            ),
         )
 
     return FileResponse(
         path=image_path,
         media_type="image/png",
-        filename="screenshot.png",
+        filename=image_path.name,
     )
 
 
