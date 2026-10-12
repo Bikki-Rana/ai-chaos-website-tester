@@ -1,11 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import * as api from '../services/api';
 import type { AuthUser } from '../services/api';
 import { UNAUTHORIZED_EVENT, clearToken, getToken, setToken } from '../services/token';
+import SignInRequired from '../components/SignInRequired';
 import { SkeletonRows } from '../components/States';
-import { paths } from './routes';
 
 type Status = 'loading' | 'authed' | 'anon';
 
@@ -88,6 +88,7 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+/** Wraps pages that need an account. Guests see the "Sign in to run tests" page instead. */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const location = useLocation();
@@ -100,7 +101,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     );
   }
   if (status === 'anon') {
-    return <Navigate to={paths.login} replace state={{ from: location.pathname + location.search }} />;
+    return <SignInRequired from={location.pathname + location.search} />;
   }
   return <>{children}</>;
 }

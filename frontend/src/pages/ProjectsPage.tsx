@@ -1,15 +1,20 @@
-import { useState } from 'react';
-import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Button from '../components/Button';
+import ChaosHero from '../components/ChaosHero';
 import { PlusIcon } from '../components/Icons';
-import Modal from '../components/Modal';
+import NewProjectModal from '../components/NewProjectModal';
+import ProjectCard from '../components/ProjectCard';
 import { EmptyState, ErrorState, SkeletonRows } from '../components/States';
-import StatusBadge from '../components/StatusBadge';
+import TiltCard from '../components/TiltCard';
+import { useAuth } from '../lib/auth';
 import { createProject, fetchProjectRuns, listProjects } from '../lib/client';
-import { formatDate, formatRelative, newestFirst } from '../lib/format';
-import { errMsg, useAsync, useRowClick } from '../lib/hooks';
+import type { ProjectInput } from '../lib/client';
+import { addDraft, claimDrafts, listDrafts, useDrafts } from '../lib/drafts';
+import { formatRelative, newestFirst } from '../lib/format';
+import { useAsync } from '../lib/hooks';
 import { paths } from '../lib/routes';
+import { useCountUp } from '../lib/useCountUp';
 import type { Project, TestRun } from '../types';
 
 interface ProjectRow {
@@ -18,6 +23,14 @@ interface ProjectRow {
 }
 
 async function loadRows(): Promise<ProjectRow[]> {
+  // Projects a guest created before signing in are saved to the account first.
+  if (listDrafts().length > 0) {
+    try {
+      await claimDrafts();
+    } catch {
+      /* they stay on this device and are retried next time */
+    }
+  }
   const projects = await listProjects();
   return Promise.all(
     projects.map(async (project): Promise<ProjectRow> => {
@@ -30,235 +43,141 @@ async function loadRows(): Promise<ProjectRow[]> {
   );
 }
 
-function normalizeUrl(raw: string): string {
-  const v = raw.trim();
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v}`;
-}
-
-function validate(name: string, url: string): { name?: string; url?: string } {
-  const errors: { name?: string; url?: string } = {};
-  if (!name.trim()) errors.name = 'Project name is required.';
-  if (!url.trim()) {
-    errors.url = 'Target URL is required.';
-  } else {
-    try {
-      const u = new URL(normalizeUrl(url));
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('protocol');
-    } catch {
-      errors.url = 'Enter a valid http(s) URL.';
-    }
-  }
-  return errors;
-}
-
-function NewProjectModal({
-  onClose,
-  onCreated,
+function Stat({
+  label,
+  value,
+  hint,
+  bad = false,
+  index,
 }: {
-  onClose: () => void;
-  onCreated: (p: Project) => void;
+  label: string;
+  value: number;
+  hint?: string;
+  bad?: boolean;
+  index: number;
 }) {
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [description, setDescription] = useState('');
-  const [objective, setObjective] = useState('');
-  const [errors, setErrors] = useState<{ name?: string; url?: string }>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const next = validate(name, url);
-    setErrors(next);
-    if (next.name || next.url) return;
-    setSubmitting(true);
-    setSubmitError(null);
-    try {
-      const project = await createProject({
-        name: name.trim(),
-        url: normalizeUrl(url),
-        description: description.trim() || undefined,
-        testing_objective: objective.trim() || undefined,
-      });
-      onCreated(project);
-    } catch (err) {
-      setSubmitError(errMsg(err));
-      setSubmitting(false);
-    }
-  }
-
+  const shown = useCountUp(value);
   return (
-    <Modal title="New project" onClose={onClose} busy={submitting}>
-      <form onSubmit={submit} noValidate>
-        <div className="ct-modal-body">
-          <div className="ct-field">
-            <label className="ct-label" htmlFor="np-name">
-              Project name
-            </label>
-            <input
-              id="np-name"
-              className="ct-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Storefront"
-              aria-invalid={errors.name ? true : undefined}
-              disabled={submitting}
-              autoComplete="off"
-            />
-            {errors.name ? <div className="ct-field-error">{errors.name}</div> : null}
-          </div>
-          <div className="ct-field">
-            <label className="ct-label" htmlFor="np-url">
-              Target URL
-            </label>
-            <input
-              id="np-url"
-              className="ct-input"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com"
-              inputMode="url"
-              aria-invalid={errors.url ? true : undefined}
-              disabled={submitting}
-              autoComplete="off"
-            />
-            {errors.url ? <div className="ct-field-error">{errors.url}</div> : null}
-          </div>
-          <div className="ct-field">
-            <label className="ct-label" htmlFor="np-desc">
-              Description <span className="ct-faint">(optional)</span>
-            </label>
-            <textarea
-              id="np-desc"
-              className="ct-input"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              disabled={submitting}
-            />
-          </div>
-          <div className="ct-field">
-            <label className="ct-label" htmlFor="np-obj">
-              Testing objective <span className="ct-faint">(optional)</span>
-            </label>
-            <textarea
-              id="np-obj"
-              className="ct-input"
-              value={objective}
-              onChange={(e) => setObjective(e.target.value)}
-              disabled={submitting}
-            />
-          </div>
-          {submitError ? (
-            <div className="ct-field-error" role="alert" style={{ marginBottom: 12 }}>
-              {submitError}
-            </div>
-          ) : null}
-        </div>
-        <div className="ct-modal-foot">
-          <Button onClick={onClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" loading={submitting}>
-            Create project
-          </Button>
-        </div>
-      </form>
-    </Modal>
+    <TiltCard className="ct-stat ct-rise" style={{ ['--i' as string]: index }}>
+      <div className="ct-lift">
+        <div className="ct-stat-label">{label}</div>
+        <div className={`ct-stat-value${bad ? ' is-bad' : ''}`}>{shown}</div>
+        {hint ? <div className="ct-stat-hint">{hint}</div> : null}
+      </div>
+    </TiltCard>
   );
 }
 
 export default function ProjectsPage() {
+  const { status } = useAuth();
+  const authed = status === 'authed';
   const navigate = useNavigate();
-  const onRowClick = useRowClick();
-  const { data, error, loading, reload } = useAsync(loadRows, []);
+  const location = useLocation();
+  const drafts = useDrafts();
   const [creating, setCreating] = useState(false);
-  const rows = data ?? [];
+
+  const { data, error, loading, reload } = useAsync<ProjectRow[]>(
+    () => (authed ? loadRows() : Promise.resolve<ProjectRow[]>([])),
+    [authed],
+  );
+  const rows = useMemo(() => data ?? [], [data]);
+
+  // The sidebar "New project" button navigates here with this flag.
+  useEffect(() => {
+    if ((location.state as { newProject?: boolean } | null)?.newProject) {
+      setCreating(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location, navigate]);
+
+  const stats = useMemo(() => {
+    let totalRuns = 0;
+    let running = 0;
+    let attention = 0;
+    for (const { runs } of rows) {
+      if (!runs) continue;
+      totalRuns += runs.length;
+      running += runs.filter((r) => r.status === 'RUNNING').length;
+      if (runs[0]?.status === 'FAILED') attention += 1;
+    }
+    return { totalRuns, running, attention };
+  }, [rows]);
+
+  async function createNew(input: ProjectInput): Promise<void> {
+    if (authed) {
+      const project = await createProject(input);
+      navigate(paths.project(project.id));
+    } else {
+      const draft = addDraft(input);
+      navigate(paths.project(draft.id));
+    }
+  }
+
+  const checking = status === 'loading' || (authed && loading && !data);
+  const hasItems = authed ? rows.length > 0 : drafts.length > 0;
 
   return (
     <div className="ct-page">
-      <header className="ct-pagehead">
-        <div>
-          <h1 className="ct-title">Projects</h1>
-          <p className="ct-sub">Websites monitored and tested by AI Chaos Tester.</p>
+      <ChaosHero>
+        <h1 className="ct-title ct-hero-title">Projects</h1>
+        <p className="ct-sub">Websites monitored and tested by AI Chaos Tester.</p>
+        <div className="ct-hero-actions">
+          <Button variant="primary" icon={<PlusIcon />} onClick={() => setCreating(true)} disabled={status === 'loading'}>
+            New project
+          </Button>
         </div>
-        <Button variant="primary" icon={<PlusIcon />} onClick={() => setCreating(true)}>
-          New project
-        </Button>
-      </header>
+      </ChaosHero>
 
-      {error ? (
-        <ErrorState what="projects" message={error} onRetry={() => reload()} />
-      ) : (
-        <section className="ct-panel" aria-label="Projects">
-          {loading && !data ? (
-            <SkeletonRows />
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title="No projects yet"
-              description="Add a website to start exploring it for failures."
-              action={
-                <Button variant="primary" icon={<PlusIcon />} onClick={() => setCreating(true)}>
-                  New project
-                </Button>
-              }
-            />
-          ) : (
-            <div className="ct-tablewrap">
-              <table className="ct-table">
-                <thead>
-                  <tr>
-                    <th>Project</th>
-                    <th>Target</th>
-                    <th className="ct-num">Runs</th>
-                    <th>Last run</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ project: p, runs }) => {
-                    const latest = runs?.[0];
-                    const to = paths.project(p.id);
-                    return (
-                      <tr key={p.id} className="ct-clickable" onClick={(e) => onRowClick(e, to)}>
-                        <td className="ct-cell-main">
-                          <Link className="ct-link" to={to}>
-                            {p.name}
-                          </Link>
-                          <div className="ct-faint ct-small">Created {formatDate(p.created_at)}</div>
-                        </td>
-                        <td data-label="Target">
-                          <span className="ct-mono ct-wrap">{p.url}</span>
-                        </td>
-                        <td data-label="Runs" className="ct-num">
-                          {runs ? runs.length : '\u2014'}
-                        </td>
-                        <td data-label="Last run">{latest ? formatRelative(latest.created_at) : '\u2014'}</td>
-                        <td data-label="Status">
-                          {latest ? (
-                            <StatusBadge status={latest.status} />
-                          ) : (
-                            <span className="ct-faint">{runs ? 'No runs' : '\u2014'}</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {authed && error ? <ErrorState what="projects" message={error} onRetry={() => reload()} /> : null}
+
+      {checking ? (
+        <section className="ct-panel" aria-busy="true">
+          <SkeletonRows rows={3} />
         </section>
-      )}
-
-      {creating ? (
-        <NewProjectModal
-          onClose={() => setCreating(false)}
-          onCreated={(p) => {
-            setCreating(false);
-            navigate(paths.project(p.id));
-          }}
-        />
+      ) : !hasItems && !error ? (
+        <section className="ct-panel">
+          <EmptyState title="No projects yet" description="Add a website to start exploring it for failures." />
+        </section>
       ) : null}
+
+      {authed && rows.length > 0 ? (
+        <div className="ct-stats">
+          <Stat index={0} label="Projects" value={rows.length} />
+          <Stat index={1} label="Total runs" value={stats.totalRuns} />
+          <Stat index={2} label="Running now" value={stats.running} />
+          <Stat index={3} label="Latest run failed" value={stats.attention} bad={stats.attention > 0} hint="Projects" />
+        </div>
+      ) : null}
+
+      {authed && rows.length > 0 ? (
+        <div className="ct-pgrid">
+          {rows.map(({ project, runs }, i) => {
+            const latest = runs?.[0];
+            return (
+              <ProjectCard
+                key={project.id}
+                index={i}
+                to={paths.project(project.id)}
+                name={project.name}
+                url={project.url}
+                status={latest?.status ?? null}
+                runs={runs ? runs.length : null}
+                lastRun={latest ? formatRelative(latest.created_at) : undefined}
+              />
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!authed && status !== 'loading' && drafts.length > 0 ? (
+        <div className="ct-pgrid">
+          {drafts.map((d, i) => (
+            <ProjectCard key={d.id} index={i} draft to={paths.project(d.id)} name={d.name} url={d.url} />
+          ))}
+        </div>
+      ) : null}
+
+      {creating ? <NewProjectModal onClose={() => setCreating(false)} onSubmit={createNew} /> : null}
     </div>
   );
 }

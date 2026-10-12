@@ -376,3 +376,126 @@ textarea.ct-input { height: auto; min-height: 68px; padding: 8px 10px; resize: v
 .ct-btn-block { width: 100%; height: 34px; }
 .ct-user { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .ct-user-email { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 12px; }
+/* ---------- Auth extras ---------- */
+.ct-label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ct-inline-link { font-size: 12px; color: var(--text-2); text-decoration: none; }
+.ct-inline-link:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.ct-auth-card a.ct-btn { text-decoration: none; }
+
+/* ---------- Sidebar project list ---------- */
+.ct-newproject { width: 100%; justify-content: flex-start; margin-bottom: 10px; }
+.ct-side-label {
+  margin: 16px 8px 6px; font-size: 11px; font-weight: 500;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3);
+}
+.ct-plist {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px;
+  margin: 0 -4px; padding: 0 4px;
+}
+.ct-plist a {
+  display: block; height: 28px; line-height: 28px; padding: 0 8px;
+  border-radius: 5px; color: var(--text-2); text-decoration: none; font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: background 0.12s, color 0.12s;
+}
+.ct-plist a:hover { background: var(--surface-2); color: var(--text); }
+.ct-plist a.active { background: var(--surface-2); color: var(--text); }
+.ct-plist a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ct-plist-empty { padding: 4px 8px; font-size: 12px; color: var(--text-3); }
+
+/* ---------- 3D project map ---------- */
+.ct-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: flex-end; }
+.ct-scene { position: relative; height: 380px; overflow: hidden; background: var(--bg); }
+.ct-scene canvas { display: block; width: 100%; height: 100%; outline: none; }
+.ct-scene-label {
+  position: absolute; left: 0; top: 0; max-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; color: var(--text-2);
+  pointer-events: none; opacity: 0; will-change: transform;
+}
+.ct-scene-tip {
+  position: absolute; left: 0; top: 0; z-index: 2; max-width: 240px;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+  border: 1px solid var(--border-2); border-radius: 6px; background: var(--surface);
+  font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.12s;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.ct-scene-tip strong { font-size: 13px; overflow-wrap: anywhere; }
+.ct-scene-tip span { color: var(--text-2); overflow-wrap: anywhere; }
+.ct-scene-hint { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--text-3); pointer-events: none; }
+.ct-scene-fallback { padding: 28px 16px; text-align: center; font-size: 13px; color: var(--text-2); }
+@media (max-width: 640px) {
+  .ct-scene { height: 300px; }
+  .ct-legend { justify-content: flex-start; }
+}
+/* ---------- Sign-in gate and guest sidebar ---------- */
+.ct-gate {
+  max-width: 440px; margin: 56px auto; padding: 28px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.ct-gate h1 { margin: 0 0 6px; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+.ct-gate p { margin: 0 0 18px; color: var(--text-2); font-size: 13px; }
+.ct-guest-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.ct-guest-actions .ct-inline-link { text-align: center; }
+/* ---------- Dashboard: 3D hero ---------- */
+.ct-hero {
+  position: relative; height: 300px; margin-bottom: 20px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.ct-hero canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.ct-hero-copy {
+  position: relative; z-index: 1; max-width: 460px; height: 100%; padding: 28px;
+  display: flex; flex-direction: column; justify-content: center; pointer-events: none;
+}
+.ct-hero-copy .ct-btn, .ct-hero-copy a { pointer-events: auto; }
+.ct-hero-title { font-size: 28px; }
+.ct-hero-actions { margin-top: 18px; }
+.ct-hero-hint { position: absolute; left: 28px; bottom: 14px; z-index: 1; font-size: 11px; color: var(--text-3); pointer-events: none; }
+@media (max-width: 640px) {
+  .ct-hero { height: 380px; }
+  .ct-hero-copy { padding: 20px; justify-content: flex-start; }
+  .ct-hero-hint { left: 20px; }
+}
+
+/* ---------- Dashboard: tilt cards, stats, project grid ---------- */
+.ct-tilt {
+  --rx: 0deg; --ry: 0deg; --mx: 50%; --my: 50%;
+  position: relative; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+  transform-style: preserve-3d; will-change: transform;
+  transition: transform 0.18s ease-out, border-color 0.15s;
+}
+.ct-tilt::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  opacity: 0; transition: opacity 0.2s;
+  background: radial-gradient(220px circle at var(--mx) var(--my), rgba(255, 255, 255, 0.07), transparent 65%);
+}
+.ct-tilt:hover { border-color: var(--border-2); }
+.ct-tilt:hover::after { opacity: 1; }
+.ct-lift { transform: translateZ(14px); }
+
+.ct-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+@media (max-width: 719px) { .ct-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ct-stat { padding: 14px 16px; }
+.ct-stat-label { font-size: 12px; color: var(--text-2); }
+.ct-stat-value { margin-top: 2px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.ct-stat-value.is-bad { color: #f08a84; }
+.ct-stat-hint { font-size: 12px; color: var(--text-3); }
+
+.ct-pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.ct-pcard > a { display: block; padding: 14px 16px; border-radius: inherit; color: inherit; text-decoration: none; }
+.ct-pcard > a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ct-pcard-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ct-pcard-name { font-size: 14px; overflow-wrap: anywhere; }
+.ct-pcard-url { margin-top: 6px; }
+.ct-pcard-foot { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+.ct-rise { animation: ct-rise 0.5s ease-out backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+@keyframes ct-rise { from { opacity: 0; transform: translateY(10px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ct-tilt { transform: none !important; transition: none; }
+  .ct-lift { transform: none; }
+  .ct-rise { animation: none; }
+}

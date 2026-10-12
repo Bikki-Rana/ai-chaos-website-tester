@@ -142,3 +142,18 @@ export const getFailureScript = async (failureId: string): Promise<string> => {
   const res = await send(`/failures/${failureId}/reproduction-script`);
   return res.text();
 };
+
+// ------------------------------------------------------- password reset
+export const forgotPassword = (email: string): Promise<{ message: string }> =>
+  json<{ message: string }>('/auth/forgot-password', {
+    method: 'POST',
+    body: { email },
+    skipAuthRedirect: true,
+  });
+
+export const resetPassword = (token: string, password: string): Promise<{ message: string }> =>
+  json<{ message: string }>('/auth/reset-password', {
+    method: 'POST',
+    body: { token, password },
+    skipAuthRedirect: true,
+  });
