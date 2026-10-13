@@ -41,3 +41,10 @@ Thumbs.db
 # Playwright
 playwright-report/
 test-results/
+
+# Databases and runtime secrets
+*.db
+*.sqlite
+*.sqlite3
+.auth_secret
+backend_dump.txt
