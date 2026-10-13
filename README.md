@@ -1,5 +1,19 @@
 # AI Website Chaos Tester
 
+
+<p align="center">
+  <a href="https://ai-chaos-website-tester-murex.vercel.app/">
+    <img src="https://readme-typing-svg.demolab.com/?font=Orbitron&weight=900&size=30&duration=2500&pause=800&color=00F7FF&center=true&vCenter=true&repeat=true&width=1000&height=100&lines=AI+CHAOS+WEBSITE+TESTER;BREAK+THE+WEB.+TEST+THE+UNEXPECTED.;WELCOME+TO+THE+CHAOS" alt="AI Chaos Animated Header" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://ai-chaos-website-tester-murex.vercel.app/">
+    <img src="https://img.shields.io/badge/⚡_ENTER_THE_CHAOS-CLICK_TO_LAUNCH-00F7FF?style=for-the-badge&labelColor=090014" alt="Launch Live Site"/>
+  </a>
+</p>
+
+
 **Autonomous AI-Driven Web Application Chaos Testing and Failure Discovery Framework**
 
 > **Phase 9 Complete**: Failure Detector & Evidence Collector integrated. Automonous agents flag JS Errors/Network 500s and automatically capture screenshots and DOM states as evidence.
