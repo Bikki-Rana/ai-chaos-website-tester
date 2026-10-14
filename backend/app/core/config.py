@@ -53,6 +53,19 @@ class Settings(BaseSettings):
     # generated once and stored in backend/app/db/.auth_secret.
     secret_key: str = Field(default="", alias="SECRET_KEY")
 
+    # Password reset links point here (your deployed frontend URL in production).
+    frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
+
+    # Outgoing email. Use either Resend (HTTPS API) or SMTP. If neither is
+    # configured, reset links are printed in the backend console instead.
+    mail_from: str = Field(default="", alias="MAIL_FROM")
+    resend_api_key: str = Field(default="", alias="RESEND_API_KEY")
+    smtp_host: str = Field(default="", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str = Field(default="", alias="SMTP_USER")
+    smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
+    smtp_starttls: bool = Field(default=True, alias="SMTP_STARTTLS")
+
 
 # Singleton settings instance
 settings = Settings()

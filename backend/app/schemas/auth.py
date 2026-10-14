@@ -32,6 +32,24 @@ class SignupRequest(BaseModel):
         return _normalize_email(v)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        return _normalize_email(v)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=10, max_length=2000)
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class UserRead(BaseModel):
     id: str
     email: str

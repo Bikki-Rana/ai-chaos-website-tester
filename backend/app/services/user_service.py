@@ -21,3 +21,9 @@ async def create_user(session: AsyncSession, email: str, password: str) -> User:
     await session.commit()
     await session.refresh(user)
     return user
+
+
+async def set_password(session: AsyncSession, user: User, new_password: str) -> None:
+    user.password_hash = await asyncio.to_thread(hash_password, new_password)
+    session.add(user)
+    await session.commit()

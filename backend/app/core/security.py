@@ -103,3 +103,48 @@ def decode_access_token(token: str) -> Optional[str]:
         return sub if isinstance(sub, str) and sub else None
     except (ValueError, TypeError):
         return None
+
+# ------------------------------------------------------------ reset tokens
+from typing import Tuple
+
+_RESET_TTL_SECONDS = 30 * 60  # 30 minutes
+
+
+def password_fingerprint(stored_hash: str) -> str:
+    """Changes whenever the password changes, so a reset link works only once."""
+    return hashlib.sha256(stored_hash.encode("utf-8")).hexdigest()[:16]
+
+
+def create_reset_token(user_id: str, stored_hash: str) -> str:
+    header = _b64e(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    # "rst" (not "sub") so a reset token can never be used as a login token.
+    payload = _b64e(
+        json.dumps(
+            {
+                "rst": user_id,
+                "fp": password_fingerprint(stored_hash),
+                "exp": int(time.time()) + _RESET_TTL_SECONDS,
+            },
+            separators=(",", ":"),
+        ).encode()
+    )
+    signing_input = f"{header}.{payload}"
+    return f"{signing_input}.{_sign(signing_input)}"
+
+
+def decode_reset_token(token: str) -> Optional[Tuple[str, str]]:
+    """Returns (user_id, password_fingerprint) if valid and not expired."""
+    try:
+        header, payload, signature = token.split(".")
+        if not hmac.compare_digest(signature, _sign(f"{header}.{payload}")):
+            return None
+        data = json.loads(_b64d(payload))
+        if int(data.get("exp", 0)) < time.time():
+            return None
+        user_id = data.get("rst")
+        fp = data.get("fp")
+        if isinstance(user_id, str) and isinstance(fp, str) and user_id and fp:
+            return user_id, fp
+        return None
+    except (ValueError, TypeError):
+        return None
