@@ -1,13 +1,24 @@
-import { useState } from 'react';
-import type { FormEvent } from 'react';
+import { useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import AuthShell from '../components/AuthShell';
 import Button from '../components/Button';
+import type { ChaosCubeHandle } from '../components/ChaosCube';
 import { useAuth } from '../lib/auth';
 import { errMsg } from '../lib/hooks';
 import { paths } from '../lib/routes';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const STRENGTH = ['Too short', 'Weak', 'Fair', 'Good', 'Strong'];
+
+function scorePassword(p: string): number {
+  if (p.length < 8) return 0;
+  let s = 1;
+  if (p.length >= 12) s++;
+  if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
+  if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p)) s++;
+  return Math.min(4, s);
+}
 
 interface FieldErrors {
   email?: string;
@@ -20,11 +31,16 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const from = (location.state as { from?: string } | null)?.from ?? paths.projects;
   const isSignup = mode === 'signup';
 
+  const cubeRef = useRef<ChaosCubeHandle>(null);
+  const lastPoke = useRef(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
+  const [caps, setCaps] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [shake, setShake] = useState(false);
 
   if (status === 'authed') return <Navigate to={from} replace />;
   if (status === 'loading') {
@@ -35,6 +51,22 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     );
   }
 
+  const poke = () => {
+    const now = performance.now();
+    if (now - lastPoke.current > 140) {
+      lastPoke.current = now;
+      cubeRef.current?.pulse(0.22);
+    }
+  };
+
+  const fail = () => {
+    cubeRef.current?.glitch();
+    setShake(true);
+    window.setTimeout(() => setShake(false), 450);
+  };
+
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => setCaps(e.getModifierState('CapsLock'));
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     const next: FieldErrors = {};
@@ -42,7 +74,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     if (!password) next.password = 'Password is required.';
     else if (isSignup && password.length < 8) next.password = 'Use at least 8 characters.';
     setErrors(next);
-    if (next.email || next.password) return;
+    if (next.email || next.password) {
+      fail();
+      return;
+    }
 
     setSubmitting(true);
     setSubmitError(null);
@@ -53,16 +88,21 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
     } catch (err) {
       setSubmitError(errMsg(err));
       setSubmitting(false);
+      fail();
     }
   }
 
+  const strength = scorePassword(password);
+
   return (
     <AuthShell
-      title={isSignup ? 'Create account' : 'Sign in'}
+      cubeRef={cubeRef}
+      shake={shake}
+      title={isSignup ? 'Create your account' : 'Welcome back'}
       subtitle={
         isSignup
-          ? 'Your projects and runs are private to your account.'
-          : 'Sign in to access your projects and runs.'
+          ? 'Your projects and runs stay private to your account.'
+          : 'Sign in to see your projects and runs.'
       }
       footer={
         isSignup ? (
@@ -94,7 +134,10 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
             inputMode="email"
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              poke();
+            }}
             aria-invalid={errors.email ? true : undefined}
             disabled={submitting}
             autoFocus
@@ -112,17 +155,44 @@ export default function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
               </Link>
             ) : null}
           </div>
-          <input
-            id="auth-password"
-            className="ct-input"
-            type="password"
-            autoComplete={isSignup ? 'new-password' : 'current-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            aria-invalid={errors.password ? true : undefined}
-            disabled={submitting}
-          />
+          <div className="ct-pwrap">
+            <input
+              id="auth-password"
+              className="ct-input"
+              type={show ? 'text' : 'password'}
+              autoComplete={isSignup ? 'new-password' : 'current-password'}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                poke();
+              }}
+              onKeyUp={onKey}
+              onKeyDown={onKey}
+              aria-invalid={errors.password ? true : undefined}
+              disabled={submitting}
+            />
+            <button
+              type="button"
+              className="ct-pwtoggle"
+              onClick={() => setShow((s) => !s)}
+              aria-label={show ? 'Hide password' : 'Show password'}
+              aria-pressed={show}
+            >
+              {show ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {caps ? <div className="ct-hint-warn">Caps Lock is on</div> : null}
           {errors.password ? <div className="ct-field-error">{errors.password}</div> : null}
+          {isSignup && password ? (
+            <>
+              <div className="ct-meter" aria-hidden="true">
+                {[1, 2, 3, 4].map((n) => (
+                  <span key={n} className={strength >= n ? `on-${strength}` : ''} />
+                ))}
+              </div>
+              <div className="ct-meter-label">{STRENGTH[strength]}</div>
+            </>
+          ) : null}
         </div>
 
         {submitError ? (
