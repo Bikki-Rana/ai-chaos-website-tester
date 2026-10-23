@@ -84,3 +84,8 @@ export async function fetchScript(failureId: string): Promise<string> {
 
 export const fetchScreenshot = (failureId: string, evidenceId: string): Promise<Blob> =>
   call<Blob>(api.getFailureScreenshot, failureId, evidenceId);
+
+export const removeProject = async (id: string): Promise<void> => {
+  await api.deleteProject(id);
+  notifyProjectsChanged(); // keeps the sidebar project list in sync
+};

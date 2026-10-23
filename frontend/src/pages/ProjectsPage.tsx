@@ -15,6 +15,8 @@ import { formatRelative, newestFirst } from '../lib/format';
 import { useAsync } from '../lib/hooks';
 import { paths } from '../lib/routes';
 import { useCountUp } from '../lib/useCountUp';
+import DeleteProjectDialog from '../components/DeleteProjectDialog';
+import type { DeleteTarget } from '../components/DeleteProjectDialog';
 import type { Project, TestRun } from '../types';
 
 interface ProjectRow {
@@ -75,6 +77,7 @@ export default function ProjectsPage() {
   const location = useLocation();
   const drafts = useDrafts();
   const [creating, setCreating] = useState(false);
+  const [toDelete, setToDelete] = useState<DeleteTarget | null>(null);
 
   const { data, error, loading, reload } = useAsync<ProjectRow[]>(
     () => (authed ? loadRows() : Promise.resolve<ProjectRow[]>([])),
@@ -163,6 +166,7 @@ export default function ProjectsPage() {
                 status={latest?.status ?? null}
                 runs={runs ? runs.length : null}
                 lastRun={latest ? formatRelative(latest.created_at) : undefined}
+                onDelete={() => setToDelete({ id: project.id, name: project.name, draft: false })}
               />
             );
           })}
@@ -172,12 +176,31 @@ export default function ProjectsPage() {
       {!authed && status !== 'loading' && drafts.length > 0 ? (
         <div className="ct-pgrid">
           {drafts.map((d, i) => (
-            <ProjectCard key={d.id} index={i} draft to={paths.project(d.id)} name={d.name} url={d.url} />
+            <ProjectCard
+              key={d.id}
+              index={i}
+              draft
+              to={paths.project(d.id)}
+              name={d.name}
+              url={d.url}
+              onDelete={() => setToDelete({ id: d.id, name: d.name, draft: true })}
+            />
           ))}
         </div>
       ) : null}
 
       {creating ? <NewProjectModal onClose={() => setCreating(false)} onSubmit={createNew} /> : null}
+
+      {toDelete ? (
+        <DeleteProjectDialog
+          target={toDelete}
+          onClose={() => setToDelete(null)}
+          onDeleted={() => {
+            setToDelete(null);
+            reload(true);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

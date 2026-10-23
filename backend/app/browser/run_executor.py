@@ -5,6 +5,7 @@ app.agent.crawl_policy. This module saves what the bot sees and does.
 """
 import structlog
 import traceback
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -196,3 +197,30 @@ async def execute_test_run(
 
     await _finalize(run_id, RunStatus.COMPLETED)
     logger.info("test_run_finished", run_id=run_id, status="COMPLETED", pages=len(policy.visited))
+
+RUN_TIMEOUT_SECONDS = 600
+
+
+async def execute_test_run_with_timeout(
+    run_id: str,
+    url: str,
+    max_pages: int = 10,
+    max_depth: int = 3,
+    headless: bool = True,
+    timeout_ms: int = 30000,
+) -> None:
+    """Same as execute_test_run, but a run that hangs is ended and marked failed."""
+    try:
+        await asyncio.wait_for(
+            execute_test_run(
+                run_id, url, max_pages=max_pages, max_depth=max_depth, headless=headless, timeout_ms=timeout_ms,
+            ),
+            timeout=RUN_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.error("test_run_timed_out", run_id=run_id, seconds=RUN_TIMEOUT_SECONDS)
+        await _finalize(
+            run_id,
+            RunStatus.FAILED,
+            f"The run did not finish within {RUN_TIMEOUT_SECONDS // 60} minutes and was stopped.",
+        )

@@ -95,3 +95,8 @@ export const RefreshIcon = (p: P) => (
     <path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v3h-3" />
   </Svg>
 );
+export const TrashIcon = (p: P) => (
+  <Svg {...p}>
+    <path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.5 8h5l.5-8M7 7v3.5M9 7v3.5" />
+  </Svg>
+);

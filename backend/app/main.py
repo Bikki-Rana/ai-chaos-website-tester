@@ -24,6 +24,13 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(ensure_project_owner_column)
     logger.info("Database tables ready")
+    try:
+        from app.db.maintenance import fail_interrupted_runs
+        interrupted = await fail_interrupted_runs()
+        if interrupted:
+            logger.warning("Marked interrupted runs as failed", count=interrupted)
+    except Exception as exc:
+        logger.error("Could not clean up interrupted runs", error=str(exc))
     logger.info("Starting AI Website Chaos Tester backend",
                 mode="safe" if settings.safe_mode else "unsafe")
     yield

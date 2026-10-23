@@ -18,6 +18,7 @@ import {
 } from '../lib/format';
 import { errMsg, useAsync, useNow, useRowClick } from '../lib/hooks';
 import { paths } from '../lib/routes';
+import DeleteProjectDialog from '../components/DeleteProjectDialog';
 
 function toPositiveInt(v: string): number | null {
   const n = Number(v);
@@ -49,6 +50,7 @@ export default function ProjectDetailPage() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [orphanRunId, setOrphanRunId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const pagesInvalid = toPositiveInt(maxPages) === null;
   const depthInvalid = toPositiveInt(maxDepth) === null;
@@ -124,9 +126,23 @@ export default function ProjectDetailPage() {
             </>
           )}
         </div>
-        <Button variant="primary" onClick={start} loading={starting} disabled={!p}>
-          Run test
-        </Button>
+        <div className="ct-head-actions">
+          {p ? (
+            <Button variant="ghost" className="ct-btn-quiet-danger" onClick={() => setConfirmDelete(true)}>
+              Delete
+            </Button>
+          ) : null}
+          <Button variant="primary" onClick={start} loading={starting} disabled={!p}>
+            Run test
+          </Button>
+        </div>
+        {confirmDelete && p ? (
+          <DeleteProjectDialog
+            target={{ id: p.id, name: p.name, draft: false }}
+            onClose={() => setConfirmDelete(false)}
+            onDeleted={() => navigate(paths.projects)}
+          />
+        ) : null}
       </header>
 
       {startError ? (

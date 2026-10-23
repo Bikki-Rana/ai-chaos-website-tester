@@ -157,3 +157,8 @@ export const resetPassword = (token: string, password: string): Promise<{ messag
     body: { token, password },
     skipAuthRedirect: true,
   });
+
+// ---------------------------------------------------------------- delete
+export const deleteProject = async (id: string): Promise<void> => {
+  await send(`/projects/${id}`, { method: 'DELETE' });
+};

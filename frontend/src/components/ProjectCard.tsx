@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { TrashIcon } from './Icons';
 import StatusBadge from './StatusBadge';
 import TiltCard from './TiltCard';
 
@@ -11,9 +12,12 @@ interface ProjectCardProps {
   status?: string | null;
   runs?: number | null;
   lastRun?: string;
+  onDelete?: () => void;
 }
 
-export default function ProjectCard({ to, name, url, index, draft = false, status, runs, lastRun }: ProjectCardProps) {
+export default function ProjectCard({
+  to, name, url, index, draft = false, status, runs, lastRun, onDelete,
+}: ProjectCardProps) {
   let foot: string;
   if (draft) foot = 'Saved on this device. Log in only when you run it.';
   else if (runs === null || runs === undefined) foot = 'Runs unavailable';
@@ -36,6 +40,17 @@ export default function ProjectCard({ to, name, url, index, draft = false, statu
         </div>
         <div className="ct-pcard-foot ct-small ct-faint">{foot}</div>
       </Link>
+      {onDelete ? (
+        <button
+          type="button"
+          className="ct-pcard-del"
+          onClick={onDelete}
+          aria-label={`Delete ${name}`}
+          title="Delete project"
+        >
+          <TrashIcon />
+        </button>
+      ) : null}
     </TiltCard>
   );
 }

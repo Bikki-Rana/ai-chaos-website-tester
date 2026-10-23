@@ -19,7 +19,7 @@ from app.services import (
     state_service,
     action_selector_service,
 )
-from app.browser.run_executor import execute_test_run
+from app.browser.run_executor import execute_test_run_with_timeout
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -48,7 +48,7 @@ async def start_run(
 
     # Kick off actual execution task (no project_id param)
     background_tasks.add_task(
-        execute_test_run,
+        execute_test_run_with_timeout,
         run_id=run.id,
         url=project.url,
         headless=True,

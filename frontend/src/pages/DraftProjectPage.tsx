@@ -7,6 +7,7 @@ import { createRun, startRun } from '../lib/client';
 import { claimDrafts, clearPendingRun, getPendingRun, setPendingRun, useDrafts } from '../lib/drafts';
 import { errMsg } from '../lib/hooks';
 import { paths } from '../lib/routes';
+import DeleteProjectDialog from '../components/DeleteProjectDialog';
 
 const toInt = (v: string): number | null => {
   const n = Number(v);
@@ -51,6 +52,7 @@ export default function DraftProjectPage() {
   const [attempted, setAttempted] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Once signed in: save the project to the account and start the test the guest asked for.
   useEffect(() => {
@@ -146,7 +148,19 @@ export default function DraftProjectPage() {
             {draft.url}
           </a>
         </div>
-        <Button variant="primary" onClick={run}>Run test</Button>
+        <div className="ct-head-actions">
+          <Button variant="ghost" className="ct-btn-quiet-danger" onClick={() => setConfirmDelete(true)}>
+            Delete
+          </Button>
+          <Button variant="primary" onClick={run}>Run test</Button>
+        </div>
+        {confirmDelete && draft ? (
+          <DeleteProjectDialog
+            target={{ id: draft.id, name: draft.name, draft: true }}
+            onClose={() => setConfirmDelete(false)}
+            onDeleted={() => navigate(paths.projects)}
+          />
+        ) : null}
       </header>
 
       {draft.description || draft.testing_objective ? (
