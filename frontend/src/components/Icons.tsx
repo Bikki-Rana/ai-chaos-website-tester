@@ -100,3 +100,16 @@ export const TrashIcon = (p: P) => (
     <path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.5 8h5l.5-8M7 7v3.5M9 7v3.5" />
   </Svg>
 );
+export const DotsIcon = (p: P) => (
+  <Svg {...p}>
+    <circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none" />
+  </Svg>
+);
+export const PinIcon = (p: P) => (
+  <Svg {...p}>
+    <circle cx="9.5" cy="6.5" r="3.2" />
+    <path d="M7.2 8.8 3 13" />
+  </Svg>
+);

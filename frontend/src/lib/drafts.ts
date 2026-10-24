@@ -142,3 +142,7 @@ export function claimDrafts(): Promise<Map<string, string>> {
   });
   return claiming;
 }
+
+export function renameDraft(id: string, name: string): void {
+  write(read().map((d) => (d.id === id ? { ...d, name } : d)));
+}

@@ -1,8 +1,8 @@
 """Project ORM model."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, Text, DateTime, ForeignKey, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
@@ -11,8 +11,7 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    # Owner. Nullable so projects created before accounts existed still load
-    # (they have no owner and are not visible to anyone).
+    # Owner. Nullable so projects created before accounts existed still load.
     user_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
@@ -20,6 +19,8 @@ class Project(Base):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     testing_objective: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false(), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

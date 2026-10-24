@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import * as THREE from 'three';
+import { loadSettings } from '../lib/settings';
 
 const COLS = 9;
 const ROWS = 9;
@@ -51,7 +52,7 @@ export default function ChaosHero({
     const renderer = createRenderer();
     if (!renderer) return; // no WebGL: the text still works without the grid
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || loadSettings().reduceEffects;
     const canvas = renderer.domElement;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);

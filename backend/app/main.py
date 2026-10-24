@@ -61,9 +61,11 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():
+    from app.db.session import engine as _engine
     return {
         "status": "healthy",
         "service": "ai-chaos-tester",
         "version": "0.2.0",
         "safe_mode": settings.safe_mode,
+        "database": _engine.dialect.name,
     }

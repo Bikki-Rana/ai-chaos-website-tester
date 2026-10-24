@@ -162,3 +162,19 @@ export const resetPassword = (token: string, password: string): Promise<{ messag
 export const deleteProject = async (id: string): Promise<void> => {
   await send(`/projects/${id}`, { method: 'DELETE' });
 };
+
+// ------------------------------------------------- project menu / account
+export const updateProject = (
+  id: string,
+  changes: { name?: string; description?: string; testing_objective?: string; pinned?: boolean },
+): Promise<Project> => json<Project>(`/projects/${id}`, { method: 'PATCH', body: changes });
+
+export const reorderProjects = async (ids: string[]): Promise<void> => {
+  await send('/projects/reorder', { method: 'POST', body: { ids } });
+};
+
+export const changePassword = (currentPassword: string, newPassword: string): Promise<{ message: string }> =>
+  json<{ message: string }>('/auth/change-password', {
+    method: 'POST',
+    body: { current_password: currentPassword, new_password: newPassword },
+  });

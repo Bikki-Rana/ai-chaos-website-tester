@@ -7,7 +7,7 @@ from app.api.deps import get_current_user, get_owned_project
 from app.db.session import get_db
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.project import ProjectCreate, ProjectRead
+from app.schemas.project import ProjectCreate, ProjectRead, ProjectReorder, ProjectUpdate
 from app.schemas.test_run import TestRunRead
 from app.services import project_service, test_run_service
 
@@ -31,9 +31,32 @@ async def list_projects(
     return await project_service.get_projects_for_user(db, user.id)
 
 
+@router.post("/reorder", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_projects(
+    body: ProjectReorder,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await project_service.reorder_projects(db, user.id, body.ids)
+
+
 @router.get("/{project_id}", response_model=ProjectRead)
 async def get_project(project: Project = Depends(get_owned_project)):
     return project
+
+
+@router.patch("/{project_id}", response_model=ProjectRead)
+async def update_project(
+    body: ProjectUpdate,
+    project: Project = Depends(get_owned_project),
+    db: AsyncSession = Depends(get_db),
+):
+    changes = {
+        key: value
+        for key, value in body.model_dump(exclude_unset=True).items()
+        if not (key in ("name", "pinned") and value is None)
+    }
+    return await project_service.update_project(db, project, changes)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

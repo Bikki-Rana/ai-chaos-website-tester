@@ -113,3 +113,23 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
         raise invalid
     await user_service.set_password(db, user, body.password)
     return MessageResponse(message="Password updated. You can now sign in.")
+
+from pydantic import BaseModel, Field
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ok = await asyncio.to_thread(verify_password, body.current_password, user.password_hash)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Your current password is not correct.")
+    await user_service.set_password(db, user, body.new_password)
+    return MessageResponse(message="Password updated.")

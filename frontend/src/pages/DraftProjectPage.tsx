@@ -7,6 +7,7 @@ import { createRun, startRun } from '../lib/client';
 import { claimDrafts, clearPendingRun, getPendingRun, setPendingRun, useDrafts } from '../lib/drafts';
 import { errMsg } from '../lib/hooks';
 import { paths } from '../lib/routes';
+import { loadSettings } from '../lib/settings';
 import DeleteProjectDialog from '../components/DeleteProjectDialog';
 
 const toInt = (v: string): number | null => {
@@ -47,8 +48,8 @@ export default function DraftProjectPage() {
   const navigate = useNavigate();
   const draft = useDrafts().find((d) => d.id === projectId);
 
-  const [maxPages, setMaxPages] = useState('10');
-  const [maxDepth, setMaxDepth] = useState('2');
+  const [maxPages, setMaxPages] = useState(() => String(loadSettings().maxPages));
+  const [maxDepth, setMaxDepth] = useState(() => String(loadSettings().maxDepth));
   const [attempted, setAttempted] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);

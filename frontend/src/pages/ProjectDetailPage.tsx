@@ -18,6 +18,7 @@ import {
 } from '../lib/format';
 import { errMsg, useAsync, useNow, useRowClick } from '../lib/hooks';
 import { paths } from '../lib/routes';
+import { loadSettings } from '../lib/settings';
 import DeleteProjectDialog from '../components/DeleteProjectDialog';
 
 function toPositiveInt(v: string): number | null {
@@ -44,8 +45,8 @@ export default function ProjectDetailPage() {
     return () => window.clearInterval(t);
   }, [hasActive, reloadRuns]);
 
-  const [maxPages, setMaxPages] = useState('10');
-  const [maxDepth, setMaxDepth] = useState('2');
+  const [maxPages, setMaxPages] = useState(() => String(loadSettings().maxPages));
+  const [maxDepth, setMaxDepth] = useState(() => String(loadSettings().maxDepth));
   const [attempted, setAttempted] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);

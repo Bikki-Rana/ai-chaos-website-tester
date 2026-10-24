@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import * as THREE from 'three';
+import { loadSettings } from '../lib/settings';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 export interface ChaosCubeHandle {
@@ -61,7 +62,7 @@ const ChaosCube = forwardRef<ChaosCubeHandle>(function ChaosCube(_props, ref) {
     const renderer = createRenderer();
     if (!renderer) return;
 
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || loadSettings().reduceEffects;
     const canvas = renderer.domElement;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);

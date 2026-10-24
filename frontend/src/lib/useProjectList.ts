@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Project } from '../types';
 import { listProjects } from './client';
+import type { ProjectMeta } from './client';
 import { onProjectsChanged } from './events';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
 /** Loads the signed-in user's projects. Does nothing (no API calls) while `enabled` is false. */
-export function useProjectList(enabled: boolean): { projects: Project[]; status: Status } {
-  const [projects, setProjects] = useState<Project[]>([]);
+export function useProjectList(enabled: boolean): { projects: ProjectMeta[]; status: Status } {
+  const [projects, setProjects] = useState<ProjectMeta[]>([]);
   const [status, setStatus] = useState<Status>('idle');
 
   const load = useCallback(() => {

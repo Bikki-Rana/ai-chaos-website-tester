@@ -1,6 +1,8 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import Button from './Button';
-import { FolderIcon, GearIcon, ListIcon, LogoIcon, PlusIcon } from './Icons';
+import { FolderIcon, GearIcon, ListIcon, LogoIcon, PinIcon, PlusIcon } from './Icons';
+import ProjectActionMenu from './ProjectActionMenu';
+import type { OrderEntry } from './ProjectActionMenu';
 import { useAuth } from '../lib/auth';
 import { useDrafts } from '../lib/drafts';
 import { paths } from '../lib/routes';
@@ -23,6 +25,7 @@ export default function Sidebar() {
   const { projects, status } = useProjectList(authStatus === 'authed');
   const drafts = useDrafts();
   const navigate = useNavigate();
+  const location = useLocation();
   const returnTo = useReturnPath();
   const guest = authStatus === 'anon';
 
@@ -30,8 +33,9 @@ export default function Sidebar() {
   const label = status === 'ready' ? 'API reachable' : status === 'error' ? 'API unreachable' : 'Checking API';
 
   const items = guest
-    ? drafts.map((d) => ({ id: d.id, name: d.name }))
-    : projects.map((p) => ({ id: p.id, name: p.name }));
+    ? drafts.map((d) => ({ id: d.id, name: d.name, url: d.url, pinned: false }))
+    : projects.map((p) => ({ id: p.id, name: p.name, url: p.url, pinned: Boolean(p.pinned) }));
+  const order: OrderEntry[] = items.map((i) => ({ id: i.id, pinned: i.pinned }));
   const loadingList = !guest && items.length === 0 && (status === 'loading' || status === 'idle');
 
   return (
@@ -69,9 +73,21 @@ export default function Sidebar() {
           <div className="ct-plist-empty">{status === 'error' ? 'Could not load projects' : 'No projects yet'}</div>
         ) : (
           items.map((p) => (
-            <NavLink key={p.id} to={paths.project(p.id)} title={p.name}>
-              {p.name}
-            </NavLink>
+            <div className="ct-pitem" key={p.id}>
+              <NavLink to={paths.project(p.id)} title={p.name} className="ct-pitem-link">
+                {p.pinned ? <PinIcon className="ct-pitem-pin" width={11} height={11} /> : null}
+                <span>{p.name}</span>
+              </NavLink>
+              <ProjectActionMenu
+                project={p}
+                draft={guest}
+                order={order}
+                className="ct-pitem-menu"
+                onDeleted={() => {
+                  if (location.pathname === paths.project(p.id)) navigate(paths.projects);
+                }}
+              />
+            </div>
           ))
         )}
       </div>

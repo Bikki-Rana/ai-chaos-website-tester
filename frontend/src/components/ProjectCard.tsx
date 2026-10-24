@@ -1,22 +1,26 @@
 import { Link } from 'react-router-dom';
-import { TrashIcon } from './Icons';
+import { PinIcon } from './Icons';
+import ProjectActionMenu from './ProjectActionMenu';
+import type { OrderEntry } from './ProjectActionMenu';
 import StatusBadge from './StatusBadge';
 import TiltCard from './TiltCard';
 
 interface ProjectCardProps {
+  id: string;
   to: string;
   name: string;
   url: string;
   index: number;
   draft?: boolean;
+  pinned?: boolean;
   status?: string | null;
   runs?: number | null;
   lastRun?: string;
-  onDelete?: () => void;
+  order?: OrderEntry[];
 }
 
 export default function ProjectCard({
-  to, name, url, index, draft = false, status, runs, lastRun, onDelete,
+  id, to, name, url, index, draft = false, pinned = false, status, runs, lastRun, order,
 }: ProjectCardProps) {
   let foot: string;
   if (draft) foot = 'Saved on this device. Log in only when you run it.';
@@ -29,7 +33,10 @@ export default function ProjectCard({
       <Link to={to}>
         <div className="ct-lift">
           <div className="ct-pcard-top">
-            <strong className="ct-pcard-name">{name}</strong>
+            <strong className="ct-pcard-name">
+              {pinned ? <PinIcon className="ct-pin" width={12} height={12} /> : null}
+              {name}
+            </strong>
             {draft ? (
               <span className="ct-sev">Draft</span>
             ) : status ? (
@@ -40,17 +47,12 @@ export default function ProjectCard({
         </div>
         <div className="ct-pcard-foot ct-small ct-faint">{foot}</div>
       </Link>
-      {onDelete ? (
-        <button
-          type="button"
-          className="ct-pcard-del"
-          onClick={onDelete}
-          aria-label={`Delete ${name}`}
-          title="Delete project"
-        >
-          <TrashIcon />
-        </button>
-      ) : null}
+      <ProjectActionMenu
+        project={{ id, name, url, pinned }}
+        draft={draft}
+        order={order}
+        className="ct-pcard-menu"
+      />
     </TiltCard>
   );
 }
