@@ -4,19 +4,19 @@ Demo Site — Intentionally Buggy Web Application
 This is a development-only test target for the AI Website Chaos Tester.
 It intentionally contains the following seeded bugs:
 
-  BUG-001: Double checkout submission creates duplicate orders
+  BUG-01: Double checkout submission creates duplicate orders
            Trigger: Click 'Pay Now' twice rapidly on /checkout
 
-  BUG-002: Cart count mismatch after page refresh
+  BUG-02: Cart count mismatch after page refresh
            Trigger: Add item to cart, refresh /products — count resets in header
 
-  BUG-003: Slow endpoint — /api/slow takes 5 seconds to respond
+  BUG-03: Slow endpoint — /api/slow takes 5 seconds to respond
            Trigger: GET /api/slow
 
-  BUG-004: JavaScript TypeError on 'Apply Promo Code' button
+  BUG-04: JavaScript TypeError on 'Apply Promo Code' button
            Trigger: Click 'Apply Promo' on /cart (calls undefined function)
 
-  BUG-005: Broken redirect after logout
+  BUG-05: Broken redirect after logout
            Trigger: POST /logout redirects to /dashboard which does not exist (404)
 
 DO NOT use this site as a real shopping application.
