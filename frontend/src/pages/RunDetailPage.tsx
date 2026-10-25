@@ -1,17 +1,20 @@
-﻿import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Button, { CopyButton } from '../components/Button';
 import FailureRow from '../components/FailureRow';
-import { ChevronDownIcon, ChevronRightIcon, RefreshIcon } from '../components/Icons';
+import FailureSummaryCard from '../components/FailureSummaryCard';
+import { ChevronDownIcon, ChevronRightIcon, DownloadIcon, RefreshIcon } from '../components/Icons';
 import Metric from '../components/Metric';
 import { Banner, EmptyState, ErrorState, ShowMore, SkeletonRows } from '../components/States';
 import StatusBadge from '../components/StatusBadge';
 import {
   fetchActions,
   fetchFailures,
+  fetchUniqueFailures,
   fetchPages,
   fetchProject,
+  fetchReport,
   fetchRun,
   fetchStates,
 } from '../lib/client';
@@ -23,12 +26,12 @@ import {
   runDurationMs,
   shortId,
 } from '../lib/format';
-import { useAsync, useNow } from '../lib/hooks';
+import { errMsg, useAsync, useNow } from '../lib/hooks';
 import type { AsyncState } from '../lib/hooks';
 import { paths } from '../lib/routes';
 import type { StateRecord, TestRun } from '../types';
 
-type Tab = 'failures' | 'actions' | 'pages' | 'states';
+type Tab = 'failures' | 'classified' | 'actions' | 'pages' | 'states';
 
 const ROW_LIMIT = 200;
 const SEV_RANK: Record<string, number> = {
@@ -145,6 +148,7 @@ export default function RunDetailPage() {
   const states = useAsync(() => fetchStates(runId), [runId]);
   const actions = useAsync(() => fetchActions(runId), [runId]);
   const failures = useAsync(() => fetchFailures(runId), [runId]);
+  const uniqueFailures = useAsync(() => fetchUniqueFailures(runId), [runId]);
 
   const projectId = run.data?.project_id;
   const project = useAsync(async () => (projectId ? fetchProject(projectId) : undefined), [projectId]);
@@ -158,6 +162,7 @@ export default function RunDetailPage() {
   const reloadStates = states.reload;
   const reloadActions = actions.reload;
   const reloadFailures = failures.reload;
+  const reloadUniqueFailures = uniqueFailures.reload;
   const reloadAll = useCallback(
     (silent = false) => {
       reloadRun(silent);
@@ -165,8 +170,9 @@ export default function RunDetailPage() {
       reloadStates(silent);
       reloadActions(silent);
       reloadFailures(silent);
+      reloadUniqueFailures(silent);
     },
-    [reloadRun, reloadPages, reloadStates, reloadActions, reloadFailures],
+    [reloadRun, reloadPages, reloadStates, reloadActions, reloadFailures, reloadUniqueFailures],
   );
 
   useEffect(() => {
@@ -185,6 +191,29 @@ export default function RunDetailPage() {
   const [tabState, setTab] = useState<Tab | null>(null);
   const [actionLimit, setActionLimit] = useState(ROW_LIMIT);
   const [stateLimit, setStateLimit] = useState(ROW_LIMIT);
+  const [exporting, setExporting] = useState<string | null>(null);
+
+  async function handleExportReport(format: 'markdown' | 'html') {
+    setExporting(format);
+    try {
+      const content = await fetchReport(runId, format);
+      const ext = format === 'html' ? 'html' : 'md';
+      const mime = format === 'html' ? 'text/html' : 'text/markdown';
+      const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `chaos-report-${shortId(runId)}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Could not export report: ${errMsg(e)}`);
+    } finally {
+      setExporting(null);
+    }
+  }
 
   const pagesById = useMemo(
     () => new Map((pages.data ?? []).map((p) => [p.id, p] as const)),
@@ -233,12 +262,14 @@ export default function RunDetailPage() {
   }
 
   const projectName = project.data?.name ?? shortId(r.project_id);
-  const tab: Tab = tabState ?? (failuresSorted.length > 0 ? 'failures' : 'actions');
+  const tab: Tab = tabState ?? (failuresSorted.length > 0 ? 'classified' : 'actions');
   const failureCount = failures.data?.length;
+  const uniqueCount = uniqueFailures.data?.length;
   const count = (n: number | undefined) => (n === undefined ? '\u2014' : n);
 
   const TABS: { id: Tab; label: string; n: number | undefined }[] = [
-    { id: 'failures', label: 'Failures', n: failureCount },
+    { id: 'classified', label: '🔬 Classified', n: uniqueCount },
+    { id: 'failures', label: 'Raw Failures', n: failureCount },
     { id: 'actions', label: 'Actions', n: actions.data?.length },
     { id: 'pages', label: 'Pages', n: pages.data?.length },
     { id: 'states', label: 'DOM states', n: states.data?.length },
@@ -284,9 +315,25 @@ export default function RunDetailPage() {
             </span>
           </div>
         </div>
-        <Button icon={<RefreshIcon />} onClick={() => reloadAll()} loading={run.loading}>
-          Refresh
-        </Button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button
+            icon={<DownloadIcon />}
+            onClick={() => handleExportReport('markdown')}
+            loading={exporting === 'markdown'}
+          >
+            Report (MD)
+          </Button>
+          <Button
+            icon={<DownloadIcon />}
+            onClick={() => handleExportReport('html')}
+            loading={exporting === 'html'}
+          >
+            Report (HTML)
+          </Button>
+          <Button icon={<RefreshIcon />} onClick={() => reloadAll()} loading={run.loading}>
+            Refresh
+          </Button>
+        </div>
       </header>
 
       {r.status === 'RUNNING' ? (
@@ -338,12 +385,33 @@ export default function RunDetailPage() {
               onClick={() => setTab(t.id)}
             >
               {t.label}
-              <span className={`ct-tab-count${t.id === 'failures' && (t.n ?? 0) > 0 ? ' is-bad' : ''}`}>
+              <span
+                className={`ct-tab-count${
+                  (t.id === 'failures' || t.id === 'classified') && (t.n ?? 0) > 0 ? ' is-bad' : ''
+                }`}
+              >
                 {t.n ?? '\u2014'}
               </span>
             </button>
           ))}
         </div>
+
+        {tab === 'classified' ? (
+          <Section
+            q={uniqueFailures}
+            items={uniqueFailures.data ?? []}
+            what="classified failures"
+            empty={<EmptyState title="No failures detected" description={failuresEmpty(r.status)} />}
+          >
+            {(items) => (
+              <div>
+                {items.map((summary) => (
+                  <FailureSummaryCard key={summary.fingerprint_hash} failure={summary} />
+                ))}
+              </div>
+            )}
+          </Section>
+        ) : null}
 
         {tab === 'failures' ? (
           <Section

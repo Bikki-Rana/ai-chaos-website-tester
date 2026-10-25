@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.schemas.test_run import TestRunRead, RunStartOptions
 from app.schemas.page import PageRead
 from app.schemas.action import ActionRead
-from app.schemas.failure import FailureRead
+from app.schemas.failure import FailureRead, FailureSummary
 from app.schemas.state import StateRead
 from app.models.test_run import RunStatus, TestRun
 from app.services import (
@@ -108,3 +108,37 @@ async def get_next_action(
     db: AsyncSession = Depends(get_db),
 ):
     return await action_selector_service.get_next_action_for_run(db, run.id)
+
+@router.get("/{run_id}/unique-failures", response_model=List[FailureSummary])
+async def get_run_unique_failures(
+    run: TestRun = Depends(get_owned_run),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deduplicated failure summary – one entry per unique fingerprint, with occurrence count."""
+    return await failure_service.get_unique_failures_for_run(db, run.id)
+
+
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from app.reports.report_generator import generate_report
+
+@router.get("/{run_id}/report")
+async def get_run_report(
+    format: str = "markdown",
+    run: TestRun = Depends(get_owned_run),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and export a comprehensive bug report in markdown, html, or json."""
+    fmt = format.lower()
+    if fmt not in ("markdown", "html", "json"):
+        raise HTTPException(status_code=400, detail="Supported formats: markdown, html, json")
+
+    content = await generate_report(db, run.id, fmt=fmt)
+    if not content:
+        raise HTTPException(status_code=404, detail="Run not found or could not generate report")
+
+    if fmt == "html":
+        return HTMLResponse(content=content)
+    elif fmt == "json":
+        return Response(content=content, media_type="application/json")
+    else:
+        return PlainTextResponse(content=content)

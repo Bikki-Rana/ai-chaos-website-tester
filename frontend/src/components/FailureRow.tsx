@@ -79,10 +79,31 @@ function FailureDetails({ failure }: { failure: FailureRecord }) {
         <div className="ct-faint ct-small">No stack trace recorded.</div>
       )}
 
+      {failure.root_cause_hint && (
+        <>
+          <div className="ct-section-label">Root Cause Diagnostic</div>
+          <div style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>
+            💡 {failure.root_cause_hint}
+          </div>
+        </>
+      )}
+
       <div className="ct-section-label">Details</div>
       <div className="ct-kv">
         <span className="ct-faint">Failure ID</span>
         <span className="ct-mono ct-wrap">{failure.id}</span>
+        {failure.category && (
+          <>
+            <span className="ct-faint">Category</span>
+            <span className="ct-mono">{failure.category}</span>
+          </>
+        )}
+        {failure.fingerprint_hash && (
+          <>
+            <span className="ct-faint">Fingerprint</span>
+            <span className="ct-mono">{failure.fingerprint_hash}</span>
+          </>
+        )}
         <span className="ct-faint">Occurred</span>
         <span>{formatDateTime(failure.created_at)}</span>
       </div>
@@ -191,7 +212,25 @@ export default function FailureRow({
       >
         <SeverityBadge severity={failure.severity} />
         <div style={{ minWidth: 0 }}>
-          <div className="ct-mono ct-faint ct-wrap">{failure.failure_type}</div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="ct-mono ct-faint ct-wrap">{failure.failure_type}</span>
+            {failure.category && (
+              <span
+                className="ct-mono"
+                style={{
+                  fontSize: 10,
+                  padding: '1px 6px',
+                  borderRadius: 4,
+                  background: 'var(--surface2, rgba(255,255,255,0.08))',
+                  color: 'var(--muted, #888)',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {failure.category}
+              </span>
+            )}
+          </div>
           <div className={`ct-failure-msg${open ? '' : ' ct-clamp'}`}>
             {failure.message}
           </div>

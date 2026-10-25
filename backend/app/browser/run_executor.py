@@ -16,6 +16,7 @@ from app.agent.action_generator import generate_actions
 from app.agent.agent_engine import run_agent_loop
 from app.agent.crawl_policy import STEPS_PER_PAGE, CrawlPolicy
 from app.agent.failure_detector import detect_failures
+from app.agent.failure_classifier import enrich as enrich_failure
 from app.core.config import settings
 from app.db.session import async_session_maker
 from app.models.action import Action
@@ -140,8 +141,9 @@ async def execute_test_run(
                 db.add(State(test_run_id=run_id, page_id=page_id, dom_hash=sig, state_data=state_data))
                 await db.flush()
 
-            # Failures seen on this step, with their evidence.
+            # Failures seen on this step – classify, fingerprint, then persist.
             for f_data in detect_failures(page_info):
+                f_data = enrich_failure(f_data)
                 db_failure = Failure(
                     test_run_id=run_id,
                     page_id=page_id,
@@ -149,6 +151,9 @@ async def execute_test_run(
                     message=f_data["message"],
                     stack_trace=f_data["stack_trace"],
                     severity=f_data["severity"],
+                    fingerprint_hash=f_data.get("fingerprint_hash"),
+                    category=f_data.get("category"),
+                    root_cause_hint=f_data.get("root_cause_hint"),
                 )
                 db.add(db_failure)
                 await db.flush()

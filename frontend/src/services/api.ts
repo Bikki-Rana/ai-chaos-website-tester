@@ -128,6 +128,18 @@ export const getRunFailures = (runId: string): Promise<unknown> => json<unknown>
 
 export const getFailureEvidence = (failureId: string): Promise<unknown> =>
   json<unknown>(`/failures/${failureId}/evidence`);
+
+export const getRunUniqueFailures = (runId: string): Promise<unknown> =>
+  json<unknown>(`/runs/${runId}/unique-failures`);
+
+export const getRunReport = async (
+  runId: string,
+  format: 'markdown' | 'html' | 'json' = 'markdown',
+): Promise<string> => {
+  const res = await send(`/runs/${runId}/report?format=${format}`);
+  return res.text();
+};
+
 export const getFailureScreenshot = async (
   failureId: string,
   evidenceId: string,

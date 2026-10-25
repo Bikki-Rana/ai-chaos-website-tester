@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -26,9 +26,10 @@ node_modules/
 !.env.example
 
 # Generated artifacts
-screenshots/
-evidence/
-reports/
+/screenshots/
+/evidence/
+/reports/
+!backend/app/reports/
 *.log
 
 # IDE

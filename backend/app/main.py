@@ -15,7 +15,7 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     # --- Startup: create all tables if they don't exist ---
     from app.db.session import engine
-    from app.db.migrate import ensure_project_owner_column
+    from app.db.migrate import ensure_project_owner_column, ensure_failure_classification_columns
     from app.models.base import Base
     from app.models import (  # noqa: F401  ensure all mappers are loaded
         User, Project, TestRun, Page, Action, State, Failure, Evidence, BugReport
@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(ensure_project_owner_column)
+        await conn.run_sync(ensure_failure_classification_columns)
     logger.info("Database tables ready")
     try:
         from app.db.maintenance import fail_interrupted_runs

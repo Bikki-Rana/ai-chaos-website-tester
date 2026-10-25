@@ -1,8 +1,9 @@
-﻿import * as api from '../services/api';
+import * as api from '../services/api';
 import type {
   ActionRecord,
   EvidenceRecord,
   FailureRecord,
+  FailureSummary,
   PageInfo,
   Project,
   RunStartOptions,
@@ -85,8 +86,16 @@ export const fetchActions = (runId: string) =>
 export const fetchFailures = (runId: string) =>
   callList<FailureRecord>(api.getRunFailures, runId);
 
+export const fetchUniqueFailures = (runId: string) =>
+  callList<FailureSummary>(api.getRunUniqueFailures, runId);
+
 export const fetchEvidence = (failureId: string) =>
   callList<EvidenceRecord>(api.getFailureEvidence, failureId);
+
+export const fetchReport = (
+  runId: string,
+  format: 'markdown' | 'html' | 'json' = 'markdown',
+): Promise<string> => api.getRunReport(runId, format);
 
 async function toText(res: unknown): Promise<string | null> {
   if (typeof res === 'string') return res;
